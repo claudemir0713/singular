@@ -66,7 +66,7 @@ return [
         'mlc' => [
             'driver' => 'mysql',
             'url' => env('DATABASE_URL'),
-            'host' => '170.150.0.187',
+            'host' => env('MLC_DB_HOST', '127.0.0.1'),
             'port' => '3306',
             'database' => 'mlc_decorbras',
             'username' => 'root',
@@ -85,8 +85,8 @@ return [
 
         'Decorbras' => [
             'driver'   => 'firebird',
-            'host'     => '170.150.0.187',
-            'port'     => '3050',
+            'host' => env('DECORBRAS_DB_HOST', '127.0.0.1'),
+            'port' => env('DECORBRAS_DB_PORT', '3050'),
             'database' => 'C:\Singular\DECORBRAS\BD\DECORBRAS.SIN',
             'username' => 'SYSDBA',
             'password' => 'godislive2000',
