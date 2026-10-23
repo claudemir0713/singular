@@ -85,7 +85,7 @@ return [
 
         'Decorbras' => [
             'driver'   => 'firebird',
-            'host' => env('DECORBRAS_DB_HOST', '127.0.0.1'),
+            'host' => env('DECORBRAS_DB_HOST', '10.1.1.251'),
             'port' => env('DECORBRAS_DB_PORT', '3050'),
             'database' => 'C:\Singular\DECORBRAS\BD\DECORBRAS.SIN',
             'username' => 'SYSDBA',
