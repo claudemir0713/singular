@@ -555,7 +555,7 @@ class ProdutoFichaFechamentoService
             'base_kg' => 0,
         ];
 
-        if (!$primeiro || (float) $bases['base_m2'] > 0) {
+        if (!config('ficha.regra_nova') || !$primeiro || (float) $bases['base_m2'] > 0) {
             return $bases;
         }
 

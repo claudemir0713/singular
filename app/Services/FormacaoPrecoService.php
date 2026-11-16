@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\DB;
 
 class FormacaoPrecoService
 {
-    public function buscarCustoProduto(string $codigo): array
+    public function buscarCustoProduto(string $codigo, ?string $anoMes = null): array
     {
         $codigo = $this->normalizarCodigo($codigo);
 
@@ -14,19 +14,22 @@ class FormacaoPrecoService
             return $this->retornoSemCusto($codigo, 'Código do produto não informado.');
         }
 
-        $estrutura = $this->buscarUltimoCustoEstrutura($codigo);
+        $estrutura = $this->buscarUltimoCustoEstrutura($codigo, $anoMes);
 
 
 
         if ($estrutura) {
+            // O custo gravado é por peça (chapa). O valor por m² é só uma conversão para consulta.
+            [$fator, $unidadeMed, $dimensoes] = $this->fatorUnidadeVenda($codigo, $estrutura);
+
             $itensEstrutura = $this->buscarEstruturaProduto(
                 $codigo,
                 (int) $estrutura->ano,
                 (int) $estrutura->mes
             );
 
-            // A ficha é por peça (ex.: chapa de 3,52 m²); converte para a unidade de venda (M2/M3).
-            $fator = max((float) ($estrutura->fator_unid ?? 1), 0.000001);
+            $alertas = $this->montarAlertas($codigo, $estrutura, $itensEstrutura, $fator, $unidadeMed);
+            $origemDetalhe = $this->descreverOrigem($estrutura);
 
             return [
                 'codigo' => trim((string) $estrutura->cod),
@@ -41,16 +44,28 @@ class FormacaoPrecoService
                 'embalagem' => $estrutura->embalagem,
                 'custo_percentual' => (float) $estrutura->custo_percentual,
 
-                'unid_med' => $estrutura->unid_med ?? null,
+                'unid_med' => $unidadeMed,
                 'fator_unid' => $fator,
+                'dimensoes' => $dimensoes,
+                'alertas' => $alertas,
+                'origem_detalhe' => $origemDetalhe,
+                'meses_disponiveis' => $this->mesesDisponiveis($codigo),
+                // Regra antiga: custo por chapa, soma todos os níveis da ficha.
+                'regra_antiga' => !config('ficha.regra_nova'),
 
                 'custo_mp_peca' => (float) $estrutura->custo_mp,
                 'custo_op_peca' => (float) $estrutura->custo_op,
                 'custo_total_peca' => (float) $estrutura->custo_total,
 
-                'custo_mp_unit' => (float) $estrutura->custo_mp / $fator,
-                'custo_op_unit' => (float) $estrutura->custo_op / $fator,
-                'custo_total_unit' => (float) $estrutura->custo_total / $fator,
+                // Custo usado na formação de preço: por peça (chapa), como nas demais competências.
+                'custo_mp_unit' => (float) $estrutura->custo_mp,
+                'custo_op_unit' => (float) $estrutura->custo_op,
+                'custo_total_unit' => (float) $estrutura->custo_total,
+
+                // Conversão para a unidade de venda (ex.: m²), apenas informativa.
+                'custo_mp_m2' => (float) $estrutura->custo_mp / $fator,
+                'custo_op_m2' => (float) $estrutura->custo_op / $fator,
+                'custo_total_m2' => (float) $estrutura->custo_total / $fator,
 
                 'estrutura' => $itensEstrutura,
 
@@ -59,7 +74,7 @@ class FormacaoPrecoService
             ];
         }
 
-        $mp = $this->buscarUltimoCustoMp($codigo);
+        $mp = $this->buscarUltimoCustoMp($codigo, $anoMes);
 
         if ($mp) {
             return [
@@ -75,6 +90,8 @@ class FormacaoPrecoService
                 'embalagem' => null,
                 'custo_percentual' => 1,
 
+                'meses_disponiveis' => $this->mesesDisponiveis($codigo),
+                'regra_antiga' => false,
                 'unid_med' => $mp->unid_med,
                 'tipo_mp' => $mp->tipo,
 
@@ -87,22 +104,56 @@ class FormacaoPrecoService
             ];
         }
 
-        return $this->retornoSemCusto($codigo, 'Custo não encontrado para o item informado.');
+        $retorno = $this->retornoSemCusto(
+            $codigo,
+            $anoMes
+                ? 'Sem custo para este produto na competência ' . $anoMes . '.'
+                : 'Custo não encontrado para o item informado.'
+        );
+
+        $retorno['meses_disponiveis'] = $this->mesesDisponiveis($codigo);
+        $retorno['regra_antiga'] = false;
+        $retorno['ano_mes_custo'] = $anoMes;
+
+        return $retorno;
     }
 
-    private function buscarUltimoCustoEstrutura(string $codigo)
+    /**
+     * Competências (AAAA-MM) com custo para o produto, da mais recente para a mais antiga.
+     */
+    private function mesesDisponiveis(string $codigo): array
+    {
+        $estrutura = DB::table('produto_custo_estrutura_mysql')
+            ->where('cod', $codigo)->pluck('ano_mes')->all();
+
+        $mp = DB::table('produto_custos_mp_mysql')
+            ->where('cod_mp', $codigo)->pluck('ano_mes')->all();
+
+        $meses = array_values(array_unique(array_map('trim', array_merge($estrutura, $mp))));
+        rsort($meses);
+
+        return $meses;
+    }
+
+    private function buscarUltimoCustoEstrutura(string $codigo, ?string $anoMes = null)
     {
         return DB::table('produto_custo_estrutura_mysql')
             ->where('cod', $codigo)
+            ->when($anoMes, function ($q) use ($anoMes) {
+                $q->where('ano_mes', $anoMes);
+            })
             ->orderBy('ano', 'desc')
             ->orderBy('mes', 'desc')
             ->first();
     }
 
-    private function buscarUltimoCustoMp(string $codigo)
+    private function buscarUltimoCustoMp(string $codigo, ?string $anoMes = null)
     {
         return DB::table('produto_custos_mp_mysql')
             ->where('cod_mp', $codigo)
+            ->when($anoMes, function ($q) use ($anoMes) {
+                $q->where('ano_mes', $anoMes);
+            })
             ->orderBy('ano', 'desc')
             ->orderBy('mes', 'desc')
             ->first();
@@ -185,7 +236,9 @@ class FormacaoPrecoService
             ->get();
 
         // Itens abaixo de um componente já precificado não entram nos totais (evita dupla contagem).
-        $considerados = FichaCustoHierarquia::considerados($itens->all());
+        $considerados = config('ficha.regra_nova')
+            ? FichaCustoHierarquia::considerados($itens->all())
+            : array_fill_keys(array_keys($itens->all()), true);
 
         $itens = $itens->map(function ($item, $i) use ($considerados) {
             $item->considerado = $considerados[$i];
@@ -217,5 +270,218 @@ class FormacaoPrecoService
             'total_materia_prima' => (float) $materiasPrimas->where('considerado', true)->sum('valor_mp'),
             'total_operacional' => (float) $operacionais->where('considerado', true)->sum('valor_op'),
         ];
+    }
+
+    /**
+     * Fator para converter o custo da peça em custo por unidade de venda (M2/M3) e a unidade.
+     * Usa o gravado na consolidação; se não houver, deduz pelas dimensões da chapa na ficha
+     * da própria competência e pela unidade do ERP.
+     *
+     * @return array{0: float, 1: ?string}
+     */
+    private function fatorUnidadeVenda(string $codigo, $estrutura): array
+    {
+        $fator = (float) ($estrutura->fator_unid ?? 1);
+        $unidade = $estrutura->unid_med ?? null;
+
+        if ($unidade === null || FichaCustoHierarquia::semFator($fator)) {
+            try {
+                $unidade = $unidade ?: trim((string) DB::connection(env('ERP_CONNECTION'))
+                    ->table('PRODUTOS')->where('PRD_CODIGO', $codigo)->value('UM_CODIGO'));
+            } catch (\Throwable $e) {
+                $unidade = null;
+            }
+        }
+
+        $descricoes = DB::table('produto_ficha_custo_mysql')
+            ->where('cod', $codigo)
+            ->where('ano', $estrutura->ano)
+            ->where('mes', $estrutura->mes)
+            ->pluck('desc_comp')
+            ->all();
+
+        $dim = FichaCustoHierarquia::dimensoesChapa((string) $estrutura->descr, $descricoes);
+
+        if ($unidade === null || FichaCustoHierarquia::semFator($fator)) {
+            $fator = max(FichaCustoHierarquia::fatorUnidade($unidade, $dim['base_m2'], $dim['base_m3']), 0.000001);
+        }
+
+        return [$fator, $unidade ?: null, $dim];
+    }
+
+    /**
+     * Histórico de custo do produto por competência (da mais recente para a mais antiga),
+     * com variação percentual em relação ao mês anterior.
+     */
+    public function historicoCustos(string $codigo, int $limite = 12): array
+    {
+        $codigo = $this->normalizarCodigo($codigo);
+
+        $linhas = DB::table('produto_custo_estrutura_mysql')
+            ->where('cod', $codigo)
+            ->orderBy('ano', 'desc')
+            ->orderBy('mes', 'desc')
+            ->limit($limite + 1)
+            ->get();
+
+        if ($linhas->isEmpty()) {
+            return ['encontrado' => false, 'itens' => [], 'unid_med' => null, 'fator_unid' => 1];
+        }
+
+        // Mesma chapa para todas as competências (usa a mais recente).
+        [$fator, $unidade] = $this->fatorUnidadeVenda($codigo, $linhas->first());
+
+        $itens = [];
+
+        foreach ($linhas->values() as $i => $linha) {
+            $anterior = $linhas->get($i + 1);
+            $total = (float) $linha->custo_total;
+
+            $itens[] = [
+                'ano_mes' => trim((string) $linha->ano_mes),
+                'custo_mp' => (float) $linha->custo_mp,
+                'custo_op' => (float) $linha->custo_op,
+                'custo_total' => $total,
+                'custo_total_m2' => $total / $fator,
+                'variacao' => ($anterior && (float) $anterior->custo_total > 0)
+                    ? ($total / (float) $anterior->custo_total - 1) * 100
+                    : null,
+            ];
+        }
+
+        return [
+            'encontrado' => true,
+            'unid_med' => $unidade,
+            'fator_unid' => $fator,
+            'itens' => array_slice($itens, 0, $limite),
+        ];
+    }
+
+    /**
+     * Texto curto de onde veio o custo exibido.
+     */
+    private function descreverOrigem($estrutura): string
+    {
+        $base = DB::table('produto_custos_op_mysql')
+            ->where('ano_mes', $estrutura->ano_mes)
+            ->value('ano_mes_base');
+
+        $fmt = function ($anoMes) {
+            $anoMes = trim((string) $anoMes);
+
+            return strlen($anoMes) === 7 ? substr($anoMes, 5, 2) . '/' . substr($anoMes, 0, 4) : $anoMes;
+        };
+
+        $texto = 'Estrutura do produto (ficha de custo) · competência ' . $fmt($estrutura->ano_mes);
+
+        if ($base) {
+            $texto .= ' · custos operacionais por hora com base em ' . $fmt($base);
+        }
+
+        return $texto;
+    }
+
+    /**
+     * Alertas sobre a qualidade do custo exibido (dados suspeitos).
+     *
+     * @return array<int, array{nivel: string, mensagem: string}>
+     */
+    private function montarAlertas(string $codigo, $estrutura, array $itens, float $fator, ?string $unidade): array
+    {
+        $alertas = [];
+        $total = (float) $estrutura->custo_total;
+        $fmt = function ($anoMes) {
+            $anoMes = trim((string) $anoMes);
+
+            return strlen($anoMes) === 7 ? substr($anoMes, 5, 2) . '/' . substr($anoMes, 0, 4) : $anoMes;
+        };
+
+        // 1) Operacional praticamente zerado
+        if ($total > 0 && (float) $estrutura->custo_op / $total < 0.02) {
+            $alertas[] = [
+                'nivel' => 'warning',
+                'mensagem' => 'Custo operacional praticamente zerado ('
+                    . number_format(((float) $estrutura->custo_op / $total) * 100, 2, ',', '.')
+                    . '% do custo). Confira se as bases de m²/m³ dos processos foram calculadas.',
+            ];
+        }
+
+        // 2) Matéria-prima (item final da estrutura) sem custo
+        $mps = $itens['materias_primas'] ?? collect();
+        $pais = collect($mps)->pluck('cod_pai')
+            ->merge(collect($itens['operacionais'] ?? [])->pluck('cod_pai'))
+            ->map(function ($c) {
+                return trim((string) $c);
+            })
+            ->unique()
+            ->flip();
+
+        $semCusto = collect($mps)
+            ->filter(function ($i) use ($pais) {
+                return (float) $i->custo_mp_unit == 0 && !$pais->has(trim((string) $i->cod_comp));
+            })
+            ->pluck('desc_comp')
+            ->unique()
+            ->values();
+
+        if ($semCusto->isNotEmpty()) {
+            $alertas[] = [
+                'nivel' => 'danger',
+                'mensagem' => $semCusto->count() . ' matéria(s)-prima(s) sem custo: '
+                    . $semCusto->take(3)->implode(', ') . ($semCusto->count() > 3 ? '…' : '') . '.',
+            ];
+        }
+
+        // 3) Variação forte em relação ao mês anterior
+        $anterior = DB::table('produto_custo_estrutura_mysql')
+            ->where('cod', $codigo)
+            ->where(function ($q) use ($estrutura) {
+                $q->where('ano', '<', $estrutura->ano)
+                    ->orWhere(function ($q2) use ($estrutura) {
+                        $q2->where('ano', $estrutura->ano)->where('mes', '<', $estrutura->mes);
+                    });
+            })
+            ->orderBy('ano', 'desc')
+            ->orderBy('mes', 'desc')
+            ->first();
+
+        if ($anterior && (float) $anterior->custo_total > 0) {
+            $variacao = ($total / (float) $anterior->custo_total - 1) * 100;
+
+            if (abs($variacao) >= 15) {
+                $alertas[] = [
+                    'nivel' => 'warning',
+                    'mensagem' => 'Custo variou ' . ($variacao > 0 ? '+' : '') . number_format($variacao, 1, ',', '.')
+                        . '% em relação a ' . $fmt($anterior->ano_mes) . '.',
+                ];
+            }
+        }
+
+        // 4) Competência diferente da mais recente
+        $maisRecente = DB::table('produto_custo_estrutura_mysql')
+            ->where('cod', $codigo)
+            ->orderBy('ano', 'desc')
+            ->orderBy('mes', 'desc')
+            ->value('ano_mes');
+
+        if ($maisRecente && trim((string) $maisRecente) !== trim((string) $estrutura->ano_mes)) {
+            $alertas[] = [
+                'nivel' => 'info',
+                'mensagem' => 'Você está vendo a competência ' . $fmt($estrutura->ano_mes)
+                    . '; a mais recente é ' . $fmt($maisRecente) . '.',
+            ];
+        }
+
+        // 5) Produto vendido em m²/m³ sem dimensões da chapa
+        if (in_array(strtoupper((string) $unidade), ['M2', 'M3'], true) && FichaCustoHierarquia::semFator($fator)) {
+            $alertas[] = [
+                'nivel' => 'warning',
+                'mensagem' => 'Produto vendido em ' . strtoupper((string) $unidade)
+                    . ', mas não foi possível identificar as dimensões da chapa: o custo por ' . strtolower((string) $unidade)
+                    . ' não pôde ser calculado.',
+            ];
+        }
+
+        return $alertas;
     }
 }

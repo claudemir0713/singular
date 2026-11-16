@@ -65,6 +65,15 @@ class FichaCustoHierarquia
      * Divisor para converter o custo da peça (ficha) para a unidade de venda.
      * Ex.: ficha por chapa de 3,52 m² e produto vendido em M2 => divide por 3,52.
      */
+    /**
+     * Fator 1.0 = sem conversão (unidade não é M2/M3 ou dimensões desconhecidas).
+     * Em M3 o fator pode ser menor que 1 (volume da peça).
+     */
+    public static function semFator(float $fator): bool
+    {
+        return abs($fator - 1.0) < 0.0000001;
+    }
+
     public static function fatorUnidade(?string $unidade, $baseM2, $baseM3): float
     {
         $unidade = strtoupper(trim((string) $unidade));
@@ -83,5 +92,72 @@ class FichaCustoHierarquia
     private static function v($item, string $campo)
     {
         return is_array($item) ? ($item[$campo] ?? null) : ($item->{$campo} ?? null);
+    }
+
+    /**
+     * Dimensões da chapa (m² e m³) deduzidas da descrição do produto e, se ela
+     * não trouxer as 3 dimensões, de um componente com a mesma espessura
+     * (ex.: PAINEL ... 15MM -> TRIPLAY SF 2200X1600X15MM => 3,52 m² e 0,0528 m³).
+     *
+     * @param  string[] $descricoesComponentes
+     * @return array{base_m2: float, base_m3: float, comprimento_mm: float, largura_mm: float, espessura_mm: float}
+     */
+    public static function dimensoesChapa(string $descricaoProduto, array $descricoesComponentes): array
+    {
+        $padrao = '/(\d+(?:\.\d+)?)\s*X\s*(\d+(?:\.\d+)?)\s*X\s*(\d+(?:\.\d+)?)\s*MM/';
+
+        $norm = function ($t) {
+            return strtoupper(str_replace(',', '.', (string) $t));
+        };
+
+        // 1) Dimensões na própria descrição do produto (ex.: 2440X1220X18MM, 13X68X1000MM).
+        if (preg_match($padrao, $norm($descricaoProduto), $d)) {
+            $m2 = ((float) $d[1] / 1000) * ((float) $d[2] / 1000);
+
+            if ($m2 > 0) {
+                return [
+                    'base_m2' => $m2,
+                    'base_m3' => $m2 * ((float) $d[3] / 1000),
+                    'comprimento_mm' => (float) $d[1],
+                    'largura_mm' => (float) $d[2],
+                    'espessura_mm' => (float) $d[3],
+                ];
+            }
+        }
+
+        // 2) Senão, de um componente da ficha com a mesma espessura do produto.
+        $espessuraProduto = 0.0;
+
+        if (preg_match('/(\d+(?:\.\d+)?)\s*MM/', $norm($descricaoProduto), $m)) {
+            $espessuraProduto = (float) $m[1];
+        }
+
+        foreach ($descricoesComponentes as $desc) {
+            if (!preg_match($padrao, $norm($desc), $m)) {
+                continue;
+            }
+
+            if ($espessuraProduto > 0 && abs((float) $m[3] - $espessuraProduto) > 0.001) {
+                continue;
+            }
+
+            $m2 = ((float) $m[1] / 1000) * ((float) $m[2] / 1000);
+
+            if ($m2 <= 0) {
+                continue;
+            }
+
+            $espessura = ($espessuraProduto > 0 ? $espessuraProduto : (float) $m[3]) / 1000;
+
+            return [
+                'base_m2' => $m2,
+                'base_m3' => $m2 * $espessura,
+                'comprimento_mm' => (float) $m[1],
+                'largura_mm' => (float) $m[2],
+                'espessura_mm' => $espessura * 1000,
+            ];
+        }
+
+        return ['base_m2' => 0.0, 'base_m3' => 0.0, 'comprimento_mm' => 0.0, 'largura_mm' => 0.0, 'espessura_mm' => 0.0];
     }
 }

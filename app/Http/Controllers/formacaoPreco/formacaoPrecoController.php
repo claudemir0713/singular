@@ -40,6 +40,26 @@ class FormacaoPrecoController extends Controller
     }
 
 
+    public function historicoCustos(Request $request, FormacaoPrecoService $service)
+    {
+        $codigo = trim((string) $request->get('codigo'));
+
+        if ($codigo === '' || !ctype_digit($codigo)) {
+            return response()->json(['success' => false, 'message' => 'Informe o código do produto.'], 422);
+        }
+
+        try {
+            return response()->json([
+                'success' => true,
+                'data' => $service->historicoCustos($codigo, 12),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Erro ao buscar histórico de custos.', ['codigo' => $codigo, 'erro' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => 'Erro ao buscar histórico de custos.'], 500);
+        }
+    }
+
     public function buscarCustoProduto(Request $request,FormacaoPrecoService $service)
     {
         $termo = trim((string) $request->get('codigo'));
@@ -83,7 +103,10 @@ class FormacaoPrecoController extends Controller
                 ]);
             }
 
-            $custo = $service->buscarCustoProduto($termo);
+            $anoMes = trim((string) $request->get('ano_mes'));
+            $anoMes = preg_match('/^\d{4}-\d{2}$/', $anoMes) ? $anoMes : null;
+
+            $custo = $service->buscarCustoProduto($termo, $anoMes);
 
             return response()->json([
                 'success' => true,

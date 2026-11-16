@@ -7,6 +7,7 @@ use App\Http\Controllers\fechamento\fechamentoController;
 use App\Http\Controllers\FormacaoPreco\FormacaoPrecoController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\menu\menuController;
+use App\Http\Controllers\nfe\NfeRecebidasController;
 use App\Http\Controllers\produtoCusto\ProdutoCustoMpController;
 use App\Http\Controllers\singular\comissaoController;
 use App\Http\Controllers\singular\pagarController;
@@ -122,6 +123,20 @@ Route::group(['middleware' => ['auth']], function () {
         Route::post('fechamento/gravaHorasMLC', [fechamentoController::class, 'gravaHorasMLC'])->name('fechamento.gravaHorasMLC');
     });
 
+    /********************************** NF-e recebidas (ciencia + XML) ***************************************************************/
+    Route::group(['namespace' => 'nfe'], function () {
+        Route::get('nfeRecebidas', [NfeRecebidasController::class, 'index'])->name('nfeRecebidas.index');
+        Route::get('nfeRecebidas/status', [NfeRecebidasController::class, 'status'])->name('nfeRecebidas.status');
+        Route::get('nfeRecebidas/documentos', [NfeRecebidasController::class, 'documentos'])->name('nfeRecebidas.documentos');
+        Route::post('nfeRecebidas/certificado', [NfeRecebidasController::class, 'salvarCertificado'])->name('nfeRecebidas.certificado');
+        Route::delete('nfeRecebidas/certificado', [NfeRecebidasController::class, 'removerCertificado'])->name('nfeRecebidas.removerCertificado');
+        Route::post('nfeRecebidas/consultar', [NfeRecebidasController::class, 'consultar'])->name('nfeRecebidas.consultar');
+        Route::post('nfeRecebidas/ciencia', [NfeRecebidasController::class, 'manifestarLote'])->name('nfeRecebidas.ciencia');
+        Route::post('nfeRecebidas/buscar-chave', [NfeRecebidasController::class, 'buscarChave'])->name('nfeRecebidas.buscarChave');
+        Route::get('nfeRecebidas/xml/{chave}', [NfeRecebidasController::class, 'xml'])->name('nfeRecebidas.xml');
+        Route::post('nfeRecebidas/zip', [NfeRecebidasController::class, 'zip'])->name('nfeRecebidas.zip');
+    });
+
     /********************************** ProdutoCusto ***************************************************************/
     Route::group(['namespace' => 'ProdutoCusto'], function () {
         Route::get('custosMp', [ProdutoCustoMpController::class, 'listAll'])->name('custosMp.listAll');
@@ -134,6 +149,7 @@ Route::group(['middleware' => ['auth']], function () {
         Route::get('formacaoPreco', [FormacaoPrecoController::class, 'listAll'])->name('formacaoPreco.listAll');
         Route::get('formacaoPreco/formacaoPreco', [FormacaoPrecoController::class, 'formacaoPreco'])->name('formacaoPreco.formacaoPreco');
         Route::get('formacaoPreco/buscar-custo-produto', [FormacaoPrecoController::class, 'buscarCustoProduto'])->name('formacaoPreco.buscarCustoProduto');
+        Route::get('formacaoPreco/historico-custos', [FormacaoPrecoController::class, 'historicoCustos'])->name('formacaoPreco.historicoCustos');
         Route::post('formacaoPreco/salvar', [FormacaoPrecoController::class, 'salvarFormacaoPreco'])->name('formacaoPreco.salvar');
         Route::post('formacaoPreco/gravar-parametros-padrao', [FormacaoPrecoController::class, 'gravarParametrosPadrao'])->name('formacaoPreco.gravarParametrosPadrao');
     });

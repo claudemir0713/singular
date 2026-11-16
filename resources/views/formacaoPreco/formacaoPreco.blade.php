@@ -64,6 +64,7 @@
             @csrf
 
             <input type="hidden" id="url_buscar_custo_produto" value="{{ route('formacaoPreco.buscarCustoProduto') }}">
+            <input type="hidden" id="url_historico_custos" value="{{ route('formacaoPreco.historicoCustos') }}">
             <input type="hidden" id="url_salvar_formacao_preco" value="{{ route('formacaoPreco.salvar') }}">
 
 
@@ -253,7 +254,7 @@
                 <div class="form-group col-md-12">
                     <div class="row mb-2">
 
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <div class="card card-resumo-preco card-resumo-venda">
                                 <div class="card-body">
                                     <div class="resumo-titulo">
@@ -265,12 +266,34 @@
                                         0,00
                                     </div>
 
-                                    <div class="resumo-percentual">&nbsp;</div>
+                                    <div class="resumo-percentual" id="card_venda_unitario">&nbsp;</div>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="col-md-4">
+                        <div class="col-md-3">
+                            <div class="card card-resumo-preco card-resumo-custo">
+                                <div class="card-body">
+                                    <div class="resumo-titulo">
+                                        <i class="fas fa-industry"></i>
+                                        Custo do Produto <span id="card_custo_unidade"></span>
+                                    </div>
+
+                                    <div class="resumo-valor" id="card_custo_valor">
+                                        0,00
+                                    </div>
+
+                                    <div class="resumo-percentual" id="card_custo_detalhe">
+                                        &nbsp;
+                                    </div>
+
+                                    <div class="resumo-percentual" id="card_custo_peca" style="display:none; font-size: 10px;"></div>
+                                    <div class="resumo-percentual" id="card_custo_dimensoes" style="display:none; font-size: 10px;"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-3">
                             <div class="card card-resumo-preco card-resumo-neutro" id="card_mc_box">
                                 <div class="card-body">
                                     <div class="resumo-titulo">
@@ -289,7 +312,7 @@
                             </div>
                         </div>
 
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <div class="card card-resumo-preco card-resumo-neutro" id="card_ml_box">
                                 <div class="card-body">
                                     <div class="resumo-titulo">
@@ -312,6 +335,14 @@
                 </div>
             </div>
 
+            {{-- ALERTAS DO CUSTO --}}
+            <div class="row">
+                <div class="col-md-12">
+                    <div id="alertas_custo"></div>
+                    <div id="origem_custo_detalhe" class="fonte-10 text-muted mb-2" style="display:none;"></div>
+                </div>
+            </div>
+
             {{-- BOTÕES DE DETALHES --}}
             <div class="row">
                 <div class="form-group col-md-12 text-right">
@@ -321,6 +352,11 @@
 
                         <i class="fas fa-box-open"></i>
                         Ver dados e custos do produto
+                    </button>
+
+                    <button type="button" class="btn btn-warning btn-sm fonte-10" id="btn_ver_historico_custos">
+                        <i class="fas fa-history"></i>
+                        Histórico de custos
                     </button>
 
                     <button type="button" class="btn btn-info btn-sm fonte-10" id="btn_ver_estrutura_produto">
@@ -372,7 +408,7 @@
 
                                     <div class="form-group col-md-2 fonte-10">
                                         <label class="label-parametro-preco">Ano/Mês</label>
-                                        <input type="text" class="form-control fonte-10" id="ano_mes_custo" readonly>
+                                        <select class="form-control fonte-10" id="ano_mes_custo" title="Competência do custo"></select>
                                     </div>
                                 </div>
 
@@ -489,6 +525,7 @@
         @include('formacaoPreco.modalListaProduto')
         @include('formacaoPreco.modalDescontoPreco')
         @include('formacaoPreco.modalEstruturaProduto')
+        @include('formacaoPreco.modalHistoricoCustos')
         @include('formacaoPreco.modalMemoriaCalculo')
 
     </div>
@@ -690,6 +727,19 @@
         .card-resumo-venda {
             background: #eef6ff;
             border-left: 5px solid #0d6efd;
+        }
+
+        .card-resumo-custo {
+            background: #fff8e6;
+            border-left: 5px solid #f59f00;
+        }
+
+        .card-resumo-custo .resumo-valor {
+            color: #b36b00;
+        }
+
+        .card-resumo-custo .resumo-percentual {
+            color: #6c757d;
         }
 
         .card-resumo-venda .resumo-valor {

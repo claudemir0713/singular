@@ -197,7 +197,7 @@ function configurarEventosParametros() {
     });
 }
 
-function buscarCustoProduto(codigo) {
+function buscarCustoProduto(codigo, anoMes) {
     codigo = $.trim(codigo || '');
 
     if (codigo === '') {
@@ -218,7 +218,8 @@ function buscarCustoProduto(codigo) {
         type: 'GET',
         dataType: 'json',
         data: {
-            codigo: codigo
+            codigo: codigo,
+            ano_mes: anoMes || ''
         },
         beforeSend: function () {
             mostrarMensagemFormacaoPreco('Buscando custo do produto...', 'info');
@@ -283,6 +284,33 @@ function buscarCustoProduto(codigo) {
         }
     });
 }
+
+function preencherCompetencias(meses, selecionado) {
+    var select = $('#ano_mes_custo');
+
+    select.empty();
+
+    if (selecionado && meses.indexOf(selecionado) === -1) {
+        meses = [selecionado].concat(meses);
+    }
+
+    $.each(meses, function (i, anoMes) {
+        select.append($('<option>').val(anoMes).text(anoMes.substr(5, 2) + '/' + anoMes.substr(0, 4)));
+    });
+
+    select.val(selecionado);
+
+    // custom.js aplica chosen() em todos os selects; precisa ser avisado das novas opções.
+    select.trigger('chosen:updated');
+}
+
+$(document).on('change', '#ano_mes_custo', function () {
+    var codigo = $.trim($('#codigo_produto').val() || $('#codigo_resultado').val());
+
+    if (codigo !== '') {
+        buscarCustoProduto(codigo, $(this).val());
+    }
+});
 
 function montarListaProdutos(produtos) {
     var lista = $('#modal_lista_produtos');
@@ -371,7 +399,15 @@ function preencherDadosCustoProduto(data, codigoDigitado) {
 
     $('#ano_custo').val(data.ano || '');
     $('#mes_custo').val(data.mes || '');
-    $('#ano_mes_custo').val(data.ano_mes_custo || '');
+    preencherCompetencias(data.meses_disponiveis || [], data.ano_mes_custo || '');
+    window.custoPecaInfo = {
+        fator: parseFloat(data.fator_unid) || 1,
+        unidade: data.unid_med || '',
+        dimensoes: data.dimensoes || null,
+        mp: parseFloat(data.custo_mp_m2) || 0,
+        op: parseFloat(data.custo_op_m2) || 0,
+        total: parseFloat(data.custo_total_m2) || 0
+    };
 
     $('#embalagem').val(data.embalagem || '');
     $('#custo_percentual').val(formatPercentNumber(custoPercentual));
@@ -387,6 +423,7 @@ function preencherDadosCustoProduto(data, codigoDigitado) {
         '<i class="fas fa-box-open"></i> Ver dados e custos do produto: ' + codigo
     );
     preencherEstruturaProduto(data.estrutura, codigo);
+    renderizarAlertasCusto(data.alertas || [], data.origem_detalhe || '');
 }
 /************card estrutura*******************************************/
 function preencherEstruturaProduto(estrutura, codigo) {
@@ -442,6 +479,11 @@ function preencherEstruturaMateriasPrimas(itens) {
     $.each(itens, function (indice, item) {
         var linha = $('<tr>');
 
+        if (item.considerado === false) {
+            linha.addClass('text-muted').css('text-decoration', 'line-through')
+                .attr('title', 'Já incluído no custo do item pai; não entra na soma.');
+        }
+
         linha.append(
             $('<td>').text(item.cod_comp || '')
         );
@@ -459,7 +501,7 @@ function preencherEstruturaMateriasPrimas(itens) {
         linha.append(
             $('<td>')
                 .addClass('text-right')
-                .text(formatarNumeroEstrutura(item.qtde_calc, 6))
+                .text(formatarNumeroEstrutura(item.qtde_unit !== undefined ? item.qtde_unit : item.qtde_calc, 6))
         );
 
         linha.append(
@@ -471,7 +513,7 @@ function preencherEstruturaMateriasPrimas(itens) {
         linha.append(
             $('<td>')
                 .addClass('text-right font-weight-bold')
-                .text(formatCurrencyNumber(item.valor_mp || 0))
+                .text(formatCurrencyNumber(item.valor_mp_unit !== undefined ? item.valor_mp_unit : (item.valor_mp || 0)))
         );
 
         tbody.append(linha);
@@ -498,6 +540,11 @@ function preencherEstruturaOperacional(itens) {
     $.each(itens, function (indice, item) {
         var linha = $('<tr>');
 
+        if (item.considerado === false) {
+            linha.addClass('text-muted').css('text-decoration', 'line-through')
+                .attr('title', 'Já incluído no custo do item pai; não entra na soma.');
+        }
+
         linha.append(
             $('<td>').text(item.cod_comp || '')
         );
@@ -515,7 +562,7 @@ function preencherEstruturaOperacional(itens) {
         linha.append(
             $('<td>')
                 .addClass('text-right')
-                .text(formatarNumeroEstrutura(item.base_op_qtd, 6))
+                .text(formatarNumeroEstrutura(item.base_op_qtd_unit !== undefined ? item.base_op_qtd_unit : item.base_op_qtd, 6))
         );
 
         linha.append(
@@ -527,7 +574,7 @@ function preencherEstruturaOperacional(itens) {
         linha.append(
             $('<td>')
                 .addClass('text-right font-weight-bold')
-                .text(formatCurrencyNumber(item.valor_op || 0))
+                .text(formatCurrencyNumber(item.valor_op_unit !== undefined ? item.valor_op_unit : (item.valor_op || 0)))
         );
 
         tbody.append(linha);
@@ -536,10 +583,10 @@ function preencherEstruturaOperacional(itens) {
 
 function formatarNumeroEstrutura(valor, casas) {
     valor = parseFloat(valor) || 0;
-    casas = casas || 2;
+    casas = (casas === undefined || casas === null) ? 2 : casas;
 
     return new Intl.NumberFormat('pt-BR', {
-        minimumFractionDigits: 2,
+        minimumFractionDigits: Math.min(2, casas),
         maximumFractionDigits: casas
     }).format(valor);
 }
@@ -588,7 +635,7 @@ function limparDadosProduto() {
 
     $('#ano_custo').val('');
     $('#mes_custo').val('');
-    $('#ano_mes_custo').val('');
+    $('#ano_mes_custo').empty().trigger('chosen:updated');
 
     $('#embalagem').val('');
     $('#custo_percentual').val('');
@@ -602,6 +649,15 @@ function limparDadosProduto() {
 
     $('#vlr_custo_material_operacional').text(formatCurrencyNumber(0));
     $('#prec_custo_material_operacional').text(formatPercentNumber(0));
+
+    $('#card_custo_unidade').text('');
+    $('#card_custo_valor').text(formatCurrencyNumber(0));
+    $('#card_custo_detalhe').html('&nbsp;');
+    $('#card_custo_peca').hide();
+    $('#card_venda_unitario').html('&nbsp;');
+    $('#card_custo_dimensoes').hide();
+    window.custoPecaInfo = null;
+    renderizarAlertasCusto([], '');
 
     $('#resumo_status').text('Aguardando consulta do produto.');
 
@@ -871,6 +927,7 @@ function atualizarPrecoVenda() {
     $('#prec_custo_material_operacional').text(formatPercentNumber(percentualCusto));
 
     calcularMemoriaPreco(precoVenda, custoTotal);
+    atualizarCardCusto(precoVenda, custoTotal);
 
     return resultado;
 }
@@ -946,6 +1003,111 @@ function calcularMemoriaPreco(precoVenda, custoTotal) {
     $('#prec_liquido').text(formatPercentNumber(percentualResultadoLiquido));
 
     atualizarCardsResumo(precoVenda, margemContribuicao, percentualMargemContribuicao, resultadoLiquido, percentualResultadoLiquido);
+}
+
+function renderizarAlertasCusto(alertas, origem) {
+    var caixa = $('#alertas_custo');
+    var linhaOrigem = $('#origem_custo_detalhe');
+
+    caixa.empty();
+
+    var classes = { danger: 'alert-danger', warning: 'alert-warning', info: 'alert-info' };
+    var icones = { danger: 'fa-times-circle', warning: 'fa-exclamation-triangle', info: 'fa-info-circle' };
+
+    $.each(alertas, function (i, alerta) {
+        var nivel = classes[alerta.nivel] ? alerta.nivel : 'info';
+
+        caixa.append(
+            $('<div class="alert py-1 px-2 mb-1 fonte-10" role="alert">')
+                .addClass(classes[nivel])
+                .append($('<i class="fas mr-1">').addClass(icones[nivel]))
+                .append(document.createTextNode(alerta.mensagem))
+        );
+    });
+
+    if (origem) {
+        linhaOrigem.text('Origem do custo: ' + origem).show();
+    } else {
+        linhaOrigem.hide().text('');
+    }
+}
+
+function temFatorUnidade(fator) {
+    fator = parseFloat(fator);
+
+    return !isNaN(fator) && fator > 0 && Math.abs(fator - 1) > 0.0000001;
+}
+
+function atualizarCardCusto(precoVenda, custoTotal) {
+    var materiais = parseBRNumber($('#custo_materiais').val());
+    var moi = parseBRNumber($('#custo_moi').val());
+    var moe = parseBRNumber($('#custo_moe').val());
+    var frete = parseBRNumber($('#vl_frete').val());
+    var unidade = ($('#unid_med').val() || '').trim();
+
+    var partes = [
+        'MP ' + formatCurrencyNumber(materiais),
+        'MOI ' + formatCurrencyNumber(moi)
+    ];
+
+    if (moe > 0) {
+        partes.push('MOE ' + formatCurrencyNumber(moe));
+    }
+
+    if (frete > 0) {
+        partes.push('Frete ' + formatCurrencyNumber(frete));
+    }
+
+    var percentual = precoVenda > 0 ? (custoTotal / precoVenda) * 100 : 0;
+
+    var infoCard = window.custoPecaInfo || {};
+    var porChapa = infoCard.fator > 1 && ['M2', 'M3'].indexOf((infoCard.unidade || '').toUpperCase()) !== -1;
+
+    $('#card_custo_unidade').text(porChapa ? '(por ' + ((infoCard.unidade || '').toUpperCase() === 'M3' ? 'peça' : 'chapa') + ')' : (unidade ? '(por ' + unidade + ')' : ''));
+    $('#card_custo_valor').text(formatCurrencyNumber(custoTotal));
+    $('#card_custo_detalhe').text(partes.join(' · ') + ' — ' + formatPercentNumber(percentual) + '% do preço');
+
+    var info = window.custoPecaInfo || {};
+
+    atualizarCardVendaUnitario(precoVenda, info);
+
+    if (temFatorUnidade(info.fator) && info.total > 0) {
+        var un = info.unidade ? info.unidade.toLowerCase().replace('2', '²').replace('3', '³') : '';
+
+        $('#card_custo_peca').text(
+            'Por ' + un + ' (' + (un === 'm³' ? 'peça' : 'chapa') + ' de ' + formatarNumeroEstrutura(info.fator, 6) + ' ' + un + '): ' +
+            formatCurrencyNumber(info.total) +
+            ' = MP ' + formatCurrencyNumber(info.mp) +
+            ' + MOI ' + formatCurrencyNumber(info.op)
+        ).show();
+    } else {
+        $('#card_custo_peca').hide();
+    }
+}
+
+function atualizarCardVendaUnitario(precoVenda, info) {
+    var unidade = (info.unidade || '').toUpperCase();
+    var temUnidade = temFatorUnidade(info.fator) && (unidade === 'M2' || unidade === 'M3');
+    var simbolo = unidade === 'M3' ? 'm³' : 'm²';
+
+    if (temUnidade && precoVenda > 0) {
+        $('#card_venda_unitario').text('Por ' + simbolo + ': ' + formatCurrencyNumber(precoVenda / info.fator));
+    } else {
+        $('#card_venda_unitario').html('&nbsp;');
+    }
+
+    var d = info.dimensoes;
+
+    if (temUnidade && d && d.base_m2 > 0) {
+        var mm = function (v) { return formatarNumeroEstrutura(v, 0); };
+
+        $('#card_custo_dimensoes').text(
+            ((info.unidade || '').toUpperCase() === 'M3' ? 'Peça ' : 'Chapa ') + mm(d.comprimento_mm) + ' × ' + mm(d.largura_mm) + ' × ' + formatarNumeroEstrutura(d.espessura_mm, 1) + ' mm' +
+            ' = ' + formatarNumeroEstrutura(d.base_m2, 6) + ' m² · ' + formatarNumeroEstrutura(d.base_m3, 6) + ' m³'
+        ).show();
+    } else {
+        $('#card_custo_dimensoes').hide();
+    }
 }
 
 function aplicarClasseResumoCard(cardId, valor) {
@@ -1701,3 +1863,88 @@ function configurarModalDescontoPreco() {
 
         return valor;
     }
+
+
+/************histórico de custos*******************************************/
+$(document).on('click', '#btn_ver_historico_custos', function () {
+    var codigo = $.trim($('#codigo_resultado').val() || $('#codigo_produto').val());
+
+    if (codigo === '') {
+        mostrarMensagemFormacaoPreco('Informe o código do produto.', 'warning');
+        return;
+    }
+
+    $('#modal_historico_titulo').text('- ' + codigo);
+    $('#historico_custos_lista').html('<tr><td colspan="7" class="text-center text-muted"><span class="fas fa-spinner fa-spin"></span> Carregando...</td></tr>');
+    $('#ModalHistoricoCustos').modal('show');
+
+    $.getJSON($('#url_historico_custos').val(), { codigo: codigo })
+        .done(function (response) {
+            preencherHistoricoCustos(response && response.data ? response.data : null);
+        })
+        .fail(function () {
+            $('#historico_custos_lista').html('<tr><td colspan="7" class="text-center text-danger">Erro ao buscar o histórico.</td></tr>');
+        });
+});
+
+function preencherHistoricoCustos(data) {
+    var tbody = $('#historico_custos_lista');
+    tbody.empty();
+
+    if (!data || !data.encontrado || !data.itens || data.itens.length === 0) {
+        tbody.html('<tr><td colspan="7" class="text-center text-muted">Nenhum custo localizado.</td></tr>');
+        return;
+    }
+
+    var unidade = (data.unid_med || '').toUpperCase();
+    var simbolo = unidade === 'M3' ? 'm³' : 'm²';
+    var temUnidade = temFatorUnidade(data.fator_unid) && (unidade === 'M2' || unidade === 'M3');
+    var atual = $('#ano_mes_custo').val();
+
+    $('#th_historico_m2').text('Custo por ' + simbolo).toggle(temUnidade);
+
+    $.each(data.itens, function (i, item) {
+        var linha = $('<tr>');
+
+        if (item.ano_mes === atual) {
+            linha.addClass('table-warning');
+        }
+
+        linha.append($('<td>').text(item.ano_mes.substr(5, 2) + '/' + item.ano_mes.substr(0, 4)));
+        linha.append($('<td class="text-right">').text(formatCurrencyNumber(item.custo_mp)));
+        linha.append($('<td class="text-right">').text(formatCurrencyNumber(item.custo_op)));
+        linha.append($('<td class="text-right font-weight-bold">').text(formatCurrencyNumber(item.custo_total)));
+
+        if (temUnidade) {
+            linha.append($('<td class="text-right">').text(formatCurrencyNumber(item.custo_total_m2)));
+        }
+
+        var variacao = $('<td class="text-right">');
+
+        if (item.variacao === null || item.variacao === undefined) {
+            variacao.text('-');
+        } else {
+            var v = parseFloat(item.variacao);
+            variacao
+                .text((v > 0 ? '+' : '') + formatPercentNumber(v) + '%')
+                .addClass(v > 0.005 ? 'text-danger' : (v < -0.005 ? 'text-success' : 'text-muted'));
+        }
+
+        linha.append(variacao);
+
+        linha.append($('<td class="text-center">').append(
+            $('<button type="button" class="btn btn-outline-primary btn-sm py-0 btn-carregar-competencia">')
+                .attr('data-ano-mes', item.ano_mes)
+                .text('Carregar')
+        ));
+
+        tbody.append(linha);
+    });
+}
+
+$(document).on('click', '.btn-carregar-competencia', function () {
+    var codigo = $.trim($('#codigo_resultado').val() || $('#codigo_produto').val());
+
+    $('#ModalHistoricoCustos').modal('hide');
+    buscarCustoProduto(codigo, $(this).data('ano-mes'));
+});

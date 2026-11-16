@@ -42,7 +42,9 @@ class ProdutoCustoEstruturaService
             $itens = $itens->all();
 
             // Não soma o que está abaixo de um componente que já tem custo próprio.
-            $considerados = FichaCustoHierarquia::considerados($itens);
+            $considerados = config('ficha.regra_nova')
+                ? FichaCustoHierarquia::considerados($itens)
+                : array_fill_keys(array_keys($itens), true);
 
             $custoMp = 0;
             $custoOp = 0;
