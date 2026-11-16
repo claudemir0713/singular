@@ -758,13 +758,17 @@ class SefazDistribuicaoService
      * rejeicoes de uma nota especifica nao interrompem as demais.
      * @return array{registradas:string[],ignoradas:string[],falhas:array<string,string>,interrompido:?string}
      */
-    public function manifestarLote(array $chaves): array
+    public function manifestarLote(array $chaves, bool $forcar = false): array
     {
         $r = ['registradas' => [], 'ignoradas' => [], 'falhas' => [], 'interrompido' => null];
         $db = $this->db();
         foreach (array_slice(array_values(array_unique($chaves)), 0, 50) as $chave) {
             $chave = (string) $chave;
-            $ja = $db->table('nfe_distribuicao')->where('chave', $chave)->where(function ($w) { $w->whereNotNull('manifestacao')->orWhereNotNull('xml_arquivo'); })->exists();
+            // "forcar" refaz a ciencia de nota que so tem a marca de manifestacao (sem XML); quem ja tem XML nunca e refeita
+            $ja = $db->table('nfe_distribuicao')->where('chave', $chave)->where(function ($w) use ($forcar) {
+                $w->whereNotNull('xml_arquivo');
+                if (!$forcar) { $w->orWhereNotNull('manifestacao'); }
+            })->exists();
             if ($ja) { $r['ignoradas'][] = $chave; continue; }
             try {
                 $this->manifestarCiencia($chave);

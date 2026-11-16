@@ -107,7 +107,7 @@
     }
 
     /* ---------------------------------------------------------- ciencia */
-    function darCiencia(chaves) {
+    function darCiencia(chaves, forcar) {
         if (!chaves.length) { return; }
         Swal.fire({
             title: 'Dar ciência da operação?',
@@ -122,7 +122,7 @@
             var total = { registradas: 0, ignoradas: 0, falhas: [], interrompido: null };
             (function proximo(n) {
                 if (n >= lotes.length || total.interrompido) { return fim(); }
-                ajax({ url: R.ciencia, type: 'POST', data: { chaves: lotes[n] } }).done(function (r) {
+                ajax({ url: R.ciencia, type: 'POST', data: { chaves: lotes[n], forcar: forcar ? 1 : 0 } }).done(function (r) {
                     total.registradas += r.registradas.length; total.ignoradas += r.ignoradas.length;
                     $.each(r.falhas || {}, function (k, m) { total.falhas.push(k.substr(25, 9).replace(/^0+/, '') + ': ' + m); });
                     total.interrompido = r.interrompido;
@@ -167,13 +167,39 @@
         });
 
         $('#corpoNfe').on('click', '.btn-buscar', function () {
-            var b = $(this).prop('disabled', true);
-            ajax({ url: R.buscarChave, type: 'POST', data: { chave: b.data('chave') } }).done(function (r) {
-                if (r.xml) { carregar(pagina); } else {
-                    b.prop('disabled', false);
-                    Swal.fire({ icon: 'info', title: 'XML ainda não disponível', text: (r.cStat || '') + ' - ' + (r.motivo || '') + '. A SEFAZ pode levar alguns minutos após a ciência.' });
+            var b = $(this), chave = b.data('chave'), icone = b.html();
+            b.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+            ajax({ url: R.buscarChave, type: 'POST', data: { chave: chave } }).done(function (r) {
+                if (r.xml) {
+                    carregar(pagina);
+                    return Swal.fire({ icon: 'success', title: 'XML recebido', text: 'A nota já pode ser baixada.', timer: 2200, showConfirmButton: false });
                 }
-            }).fail(function (xhr) { b.prop('disabled', false); Swal.fire({ icon: 'error', title: 'Erro', text: erro(xhr) }); });
+                b.prop('disabled', false).html(icone);
+                var recebeuResumo = (r.recebidos || []).some(function (s) { return /resNFe/i.test(s); });
+                var titulo = 'O XML ainda não foi liberado', corpo, refazer = false;
+                if (r.cStat === '138') {
+                    corpo = 'A SEFAZ encontrou a nota, mas ' + (recebeuResumo ? 'entregou só o <b>resumo</b>' : 'ainda não entregou o XML completo') + '.' +
+                        '<br><br>Isso é normal logo após a ciência: o XML costuma sair em alguns minutos, às vezes até 1 hora. Tente de novo mais tarde.' +
+                        '<br><br><small class="text-muted">Se a ciência foi dada há muito tempo e o XML não vem, ela pode não ter sido registrada na SEFAZ: use <b>Dar ciência novamente</b>.</small>';
+                    refazer = true;
+                } else if (r.cStat === '137') {
+                    titulo = 'Nota não localizada';
+                    corpo = 'A SEFAZ não encontrou documento para esta chave. Confira se a nota foi emitida contra o CNPJ da empresa.';
+                } else if (r.cStat === '656') {
+                    titulo = 'Consulta bloqueada pela SEFAZ';
+                    corpo = 'Muitas consultas em pouco tempo. Aguarde cerca de 1 hora e tente novamente.';
+                } else {
+                    corpo = 'Resposta da SEFAZ: ' + esc((r.cStat || '') + ' - ' + (r.motivo || 'sem detalhes')) + '.';
+                }
+                if (r.cStat === '138' && r.motivo) { corpo += '<br><small class="text-muted">Retorno da SEFAZ: ' + esc(r.cStat + ' - ' + r.motivo) + '</small>'; }
+                Swal.fire({
+                    icon: 'info', title: titulo, html: corpo, confirmButtonText: 'Entendi',
+                    showDenyButton: refazer, denyButtonText: 'Dar ciência novamente', denyButtonColor: '#f0ad4e'
+                }).then(function (res) { if (res.isDenied) { darCiencia([chave], true); } });
+            }).fail(function (xhr) {
+                b.prop('disabled', false).html(icone);
+                Swal.fire({ icon: 'error', title: 'Não foi possível consultar', text: erro(xhr) });
+            });
         });
 
         $('#btnZip').on('click', function () {

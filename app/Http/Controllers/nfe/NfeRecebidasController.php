@@ -108,7 +108,7 @@ class NfeRecebidasController extends Controller
             return $this->falha('Nenhuma chave válida selecionada.');
         }
         try {
-            return response()->json(['ok' => true] + $svc->manifestarLote($chaves));
+            return response()->json(['ok' => true] + $svc->manifestarLote($chaves, $request->boolean('forcar')));
         } catch (\Throwable $e) {
             Log::error('Manifestacao em lote SEFAZ: ' . $e->getMessage());
             return $this->falha('Falha inesperada ao manifestar: ' . mb_substr($e->getMessage(), 0, 200), 500);
