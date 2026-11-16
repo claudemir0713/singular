@@ -102,12 +102,15 @@ class ProdutoFichaFechamentoService
                     'origem' => $produto->ORIGEM_VALIDACAO ?? '',
                 ];
             } else {
+                $basesProduto = $this->calcularBasesProduto($ficha);
+
                 foreach ($ficha as $itemFicha) {
                     $dadosFichaCusto[] = $this->montarLinhaFichaCusto(
                         $itemFicha,
                         $ano,
                         $mes,
-                        $anoMes
+                        $anoMes,
+                        $basesProduto
                     );
                 }
             }
@@ -176,7 +179,7 @@ class ProdutoFichaFechamentoService
     }
 
 
-    private function montarLinhaFichaCusto($itemFicha, int $ano, int $mes, string $anoMes): array
+    private function montarLinhaFichaCusto($itemFicha, int $ano, int $mes, string $anoMes, ?array $basesProduto = null): array
     {
         $codComp = isset($itemFicha->COD_COMP)
             ? trim((string) $itemFicha->COD_COMP)
@@ -188,7 +191,7 @@ class ProdutoFichaFechamentoService
 
         $tipoCusto = $this->identificarTipoCusto($itemFicha, $codComp, $tipoComp);
 
-        $bases = $this->calcularBasesOperacionais($itemFicha);
+        $bases = $basesProduto ?? $this->calcularBasesOperacionais($itemFicha);
 
         return [
             'ano' => $ano,
@@ -531,6 +534,70 @@ class ProdutoFichaFechamentoService
         return is_numeric($valor)
             ? (float) $valor
             : 0;
+    }
+
+    /**
+     * Bases (m², m³) da peça do produto acabado, calculadas uma vez por produto.
+     *
+     * 1) Dimensões na descrição do produto (ex.: 2730X1830X04MM);
+     * 2) senão, dimensões de um componente da ficha cuja espessura seja a do
+     *    produto (ex.: PAINEL PINUS ESPECIAL SF 15MM -> TRIPLAY SF 2200X1600X15MM).
+     *
+     * A ficha de custo é por peça (chapa), por isso m² e m³ são os da peça.
+     */
+    private function calcularBasesProduto(array $ficha): array
+    {
+        $primeiro = $ficha[0] ?? null;
+
+        $bases = $primeiro ? $this->calcularBasesOperacionais($primeiro) : [
+            'base_m2' => 0,
+            'base_m3' => 0,
+            'base_kg' => 0,
+        ];
+
+        if (!$primeiro || (float) $bases['base_m2'] > 0) {
+            return $bases;
+        }
+
+        $descricao = strtoupper(str_replace(',', '.', (string) ($primeiro->DESCR ?? '')));
+
+        $espessuraProduto = 0;
+
+        if (preg_match('/(\d+(?:\.\d+)?)\s*MM/', $descricao, $m)) {
+            $espessuraProduto = (float) $m[1];
+        }
+
+        $padrao = '/(\d+(?:\.\d+)?)\s*X\s*(\d+(?:\.\d+)?)\s*X\s*(\d+(?:\.\d+)?)\s*MM/';
+
+        foreach ($ficha as $item) {
+            $desc = strtoupper(str_replace(',', '.', (string) ($item->DESC_COMP ?? '')));
+
+            if (!preg_match($padrao, $desc, $m)) {
+                continue;
+            }
+
+            if ($espessuraProduto > 0 && abs((float) $m[3] - $espessuraProduto) > 0.001) {
+                continue;
+            }
+
+            $comprimento = (float) $m[1];
+            $largura = (float) $m[2];
+
+            if ($comprimento <= 0 || $largura <= 0) {
+                continue;
+            }
+
+            $baseM2 = ($comprimento / 1000) * ($largura / 1000);
+            $espessuraM = ($espessuraProduto > 0 ? $espessuraProduto : (float) $m[3]) / 1000;
+
+            return [
+                'base_m2' => $baseM2,
+                'base_m3' => $baseM2 * $espessuraM,
+                'base_kg' => 0,
+            ];
+        }
+
+        return $bases;
     }
 
     private function calcularBasesOperacionais($itemFicha): array

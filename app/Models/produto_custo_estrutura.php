@@ -25,6 +25,11 @@ class produto_custo_estrutura extends Model
         'embalagem',
         'custo_percentual',
 
+        'unid_med',
+        'base_m2',
+        'base_m3',
+        'fator_unid',
+
         'custo_mp',
         'custo_op',
         'custo_total',

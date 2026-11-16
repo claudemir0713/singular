@@ -416,8 +416,32 @@ class ProdutoCustoOpService
         return [$ano, $mes];
     }
 
+    /**
+     * O mês só serve de base se tiver horas produtivas E despesas realizadas.
+     * Mês corrente costuma ter horas lançadas antes de as despesas fecharem,
+     * o que zeraria todos os custos operacionais por hora.
+     */
+    private function existeDespesaNoMes(int $ano, int $mes): bool
+    {
+        $coluna = $this->colunaRealizadoValor($mes);
+
+        $dados = DB::connection(self::MLC_CONNECTION)->select(
+            "SELECT COALESCE(SUM(desp.{$coluna}), 0) AS total
+             FROM desp
+             LEFT JOIN ca ON ca.Emp = desp.Emp AND ca.Cod = desp.CodCa
+             WHERE desp.Emp = ? AND desp.Ano = ? AND desp.{$coluna} <> 0 AND ca.Fam <> 0",
+            [self::EMPRESA_MLC, (string) $ano]
+        );
+
+        return isset($dados[0]->total) && (float) $dados[0]->total != 0;
+    }
+
     private function existeBaseOperacionalNoMes(int $ano, int $mes): bool
     {
+        if (!$this->existeDespesaNoMes($ano, $mes)) {
+            return false;
+        }
+
         $coluna = $this->colunaRealizadoValor($mes);
 
         $sql = "

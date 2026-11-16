@@ -25,6 +25,9 @@ class FormacaoPrecoService
                 (int) $estrutura->mes
             );
 
+            // A ficha é por peça (ex.: chapa de 3,52 m²); converte para a unidade de venda (M2/M3).
+            $fator = max((float) ($estrutura->fator_unid ?? 1), 0.000001);
+
             return [
                 'codigo' => trim((string) $estrutura->cod),
                 'descricao' => trim((string) $estrutura->descr),
@@ -38,9 +41,16 @@ class FormacaoPrecoService
                 'embalagem' => $estrutura->embalagem,
                 'custo_percentual' => (float) $estrutura->custo_percentual,
 
-                'custo_mp_unit' => (float) $estrutura->custo_mp,
-                'custo_op_unit' => (float) $estrutura->custo_op,
-                'custo_total_unit' => (float) $estrutura->custo_total,
+                'unid_med' => $estrutura->unid_med ?? null,
+                'fator_unid' => $fator,
+
+                'custo_mp_peca' => (float) $estrutura->custo_mp,
+                'custo_op_peca' => (float) $estrutura->custo_op,
+                'custo_total_peca' => (float) $estrutura->custo_total,
+
+                'custo_mp_unit' => (float) $estrutura->custo_mp / $fator,
+                'custo_op_unit' => (float) $estrutura->custo_op / $fator,
+                'custo_total_unit' => (float) $estrutura->custo_total / $fator,
 
                 'estrutura' => $itensEstrutura,
 
@@ -154,6 +164,7 @@ class FormacaoPrecoService
             ->where('ano', $ano)
             ->where('mes', $mes)
             ->select([
+                'id',
                 'cod_pai',
                 'cod_comp',
                 'desc_comp',
@@ -172,6 +183,15 @@ class FormacaoPrecoService
             ->orderBy('tipo_custo')
             ->orderBy('desc_comp')
             ->get();
+
+        // Itens abaixo de um componente já precificado não entram nos totais (evita dupla contagem).
+        $considerados = FichaCustoHierarquia::considerados($itens->all());
+
+        $itens = $itens->map(function ($item, $i) use ($considerados) {
+            $item->considerado = $considerados[$i];
+
+            return $item;
+        });
 
         $materiasPrimas = $itens
             ->filter(function ($item) {
@@ -194,8 +214,8 @@ class FormacaoPrecoService
             'materias_primas' => $materiasPrimas,
             'operacionais' => $operacionais,
 
-            'total_materia_prima' => (float) $materiasPrimas->sum('valor_mp'),
-            'total_operacional' => (float) $operacionais->sum('valor_op'),
+            'total_materia_prima' => (float) $materiasPrimas->where('considerado', true)->sum('valor_mp'),
+            'total_operacional' => (float) $operacionais->where('considerado', true)->sum('valor_op'),
         ];
     }
 }

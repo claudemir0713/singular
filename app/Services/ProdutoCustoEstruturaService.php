@@ -15,94 +15,90 @@ class ProdutoCustoEstruturaService
             ->where('mes', $mes)
             ->delete();
 
-        $sqlInsert = "
-            INSERT INTO produto_custo_estrutura_mysql
-            (
-                ano,
-                mes,
-                ano_mes,
-                cod,
-                descr,
-                grupo,
-                embalagem,
-                custo_percentual,
-                custo_mp,
-                custo_op,
-                custo_total,
-                origem,
-                created_at,
-                updated_at
-            )
-            SELECT
-                f.ano,
-                f.mes,
-                ? AS ano_mes,
+        $linhas = DB::table('produto_ficha_custo_mysql')
+            ->where('ano', $ano)
+            ->where('mes', $mes)
+            ->select([
+                'cod', 'descr', 'grupo', 'cod_pai', 'cod_comp', 'tipo_custo',
+                'custo_mp_unit', 'valor_mp', 'valor_op', 'base_m2', 'base_m3',
+            ])
+            ->orderBy('id')
+            ->get()
+            ->groupBy('cod');
 
-                f.cod,
-                MAX(f.descr) AS descr,
-                MAX(f.grupo) AS grupo,
+        $embalagens = DB::table('produto_embalagem_mysql')
+            ->select('cod_prod', 'embalagem', 'custo_percentual')
+            ->get()
+            ->keyBy(function ($e) {
+                return trim((string) $e->cod_prod);
+            });
 
-                COALESCE(MAX(e.embalagem), 'A') AS embalagem,
-                COALESCE(MAX(e.custo_percentual), 1) AS custo_percentual,
+        $unidades = $this->buscarUnidadesErp($linhas->keys()->all());
 
-                SUM(
-                    CASE
-                        WHEN f.tipo_custo = 'MATÉRIA-PRIMA'
-                        THEN COALESCE(f.valor_mp, 0)
-                        ELSE 0
-                    END
-                ) AS custo_mp,
+        $registros = [];
+        $agora = now();
 
-                SUM(
-                    CASE
-                        WHEN f.tipo_custo = 'OPERACIONAL'
-                        THEN COALESCE(f.valor_op, 0)
-                        ELSE 0
-                    END
-                ) AS custo_op,
+        foreach ($linhas as $cod => $itens) {
+            $itens = $itens->all();
 
-                SUM(
-                    CASE
-                        WHEN f.tipo_custo = 'MATÉRIA-PRIMA'
-                        THEN COALESCE(f.valor_mp, 0)
-                        ELSE 0
-                    END
-                )
-                +
-                SUM(
-                    CASE
-                        WHEN f.tipo_custo = 'OPERACIONAL'
-                        THEN COALESCE(f.valor_op, 0)
-                        ELSE 0
-                    END
-                ) AS custo_total,
+            // Não soma o que está abaixo de um componente que já tem custo próprio.
+            $considerados = FichaCustoHierarquia::considerados($itens);
 
-                'CALCULADO' AS origem,
-                NOW() AS created_at,
-                NOW() AS updated_at
+            $custoMp = 0;
+            $custoOp = 0;
+            $baseM2 = 0;
+            $baseM3 = 0;
 
-            FROM produto_ficha_custo_mysql f
+            foreach ($itens as $i => $item) {
+                $baseM2 = max($baseM2, (float) $item->base_m2);
+                $baseM3 = max($baseM3, (float) $item->base_m3);
 
-            LEFT JOIN produto_embalagem_mysql e
-                ON e.cod_prod = f.cod
+                if (!$considerados[$i]) {
+                    continue;
+                }
 
-            WHERE f.ano = ?
-            AND f.mes = ?
+                $tipo = trim((string) $item->tipo_custo);
 
-            GROUP BY
-                f.ano,
-                f.mes,
-                f.cod
+                if ($tipo === 'MATÉRIA-PRIMA') {
+                    $custoMp += (float) $item->valor_mp;
+                } elseif ($tipo === 'OPERACIONAL') {
+                    $custoOp += (float) $item->valor_op;
+                }
+            }
 
-            ORDER BY
-                f.cod
-        ";
+            $unidade = $unidades[trim((string) $cod)] ?? null;
+            $emb = $embalagens[trim((string) $cod)] ?? null;
 
-        DB::insert($sqlInsert, [
-            $anoMes,
-            $ano,
-            $mes,
-        ]);
+            $registros[] = [
+                'ano' => $ano,
+                'mes' => $mes,
+                'ano_mes' => $anoMes,
+
+                'cod' => $cod,
+                'descr' => $itens[0]->descr,
+                'grupo' => $itens[0]->grupo,
+
+                'embalagem' => $emb->embalagem ?? 'A',
+                'custo_percentual' => $emb->custo_percentual ?? 1,
+
+                'unid_med' => $unidade,
+                'base_m2' => $baseM2,
+                'base_m3' => $baseM3,
+                'fator_unid' => FichaCustoHierarquia::fatorUnidade($unidade, $baseM2, $baseM3),
+
+                'custo_mp' => $custoMp,
+                'custo_op' => $custoOp,
+                'custo_total' => $custoMp + $custoOp,
+
+                'origem' => 'CALCULADO',
+                'created_at' => $agora,
+                'updated_at' => $agora,
+            ];
+        }
+
+        foreach (array_chunk($registros, 500) as $lote) {
+            produto_custo_estrutura::insert($lote);
+        }
 
         $resumo = produto_custo_estrutura::where('ano', $ano)
             ->where('mes', $mes)
@@ -124,5 +120,27 @@ class ProdutoCustoEstruturaService
             'custo_op_total' => (float) ($resumo->custo_op_total ?? 0),
             'custo_total' => (float) ($resumo->custo_total ?? 0),
         ];
+    }
+
+    /**
+     * Unidade de venda (UM_CODIGO) de cada produto no ERP.
+     */
+    private function buscarUnidadesErp(array $codigos): array
+    {
+        $unidades = [];
+
+        foreach (array_chunk($codigos, 500) as $lote) {
+            $linhas = DB::connection(env('ERP_CONNECTION'))
+                ->table('PRODUTOS')
+                ->whereIn('PRD_CODIGO', $lote)
+                ->select('PRD_CODIGO', 'UM_CODIGO')
+                ->get();
+
+            foreach ($linhas as $linha) {
+                $unidades[trim((string) $linha->PRD_CODIGO)] = trim((string) $linha->UM_CODIGO);
+            }
+        }
+
+        return $unidades;
     }
 }
