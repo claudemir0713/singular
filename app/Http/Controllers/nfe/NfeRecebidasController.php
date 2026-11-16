@@ -80,6 +80,18 @@ class NfeRecebidasController extends Controller
         }
     }
 
+    /** Traz do ERP Singular o que ele ja recebeu da SEFAZ (somente leitura no ERP). */
+    public function importarErp(SefazDistribuicaoService $svc)
+    {
+        set_time_limit(0);
+        try {
+            return response()->json(['ok' => true] + $svc->importarDoErp());
+        } catch (\Throwable $e) {
+            Log::error('Importacao do ERP: ' . $e->getMessage());
+            return $this->falha('Não foi possível importar do ERP: ' . mb_substr($e->getMessage(), 0, 200), 500);
+        }
+    }
+
     public function documentos(Request $request, SefazDistribuicaoService $svc)
     {
         $r = $svc->documentos([

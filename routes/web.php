@@ -131,6 +131,7 @@ Route::group(['middleware' => ['auth']], function () {
         Route::post('nfeRecebidas/certificado', [NfeRecebidasController::class, 'salvarCertificado'])->name('nfeRecebidas.certificado');
         Route::delete('nfeRecebidas/certificado', [NfeRecebidasController::class, 'removerCertificado'])->name('nfeRecebidas.removerCertificado');
         Route::post('nfeRecebidas/consultar', [NfeRecebidasController::class, 'consultar'])->name('nfeRecebidas.consultar');
+        Route::post('nfeRecebidas/importar-erp', [NfeRecebidasController::class, 'importarErp'])->name('nfeRecebidas.importarErp');
         Route::post('nfeRecebidas/ciencia', [NfeRecebidasController::class, 'manifestarLote'])->name('nfeRecebidas.ciencia');
         Route::post('nfeRecebidas/buscar-chave', [NfeRecebidasController::class, 'buscarChave'])->name('nfeRecebidas.buscarChave');
         Route::get('nfeRecebidas/xml/{chave}', [NfeRecebidasController::class, 'xml'])->name('nfeRecebidas.xml');

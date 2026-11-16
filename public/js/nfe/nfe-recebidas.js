@@ -199,6 +199,20 @@
             }).always(function () { b.prop('disabled', false); });
         });
 
+        $('#btnImportarErp').on('click', function () {
+            var b = $(this).prop('disabled', true);
+            Swal.fire({ title: 'Importando do ERP...', text: 'Lendo as notas já recebidas pelo ERP Singular. Pode levar alguns minutos na primeira vez.', allowOutsideClick: false, onBeforeOpen: function () { Swal.showLoading(); }, didOpen: function () { Swal.showLoading(); } });
+            ajax({ url: R.importarErp, type: 'POST', timeout: 0 }).done(function (r) {
+                var novas = r.resumos + r.completos;
+                Swal.fire({
+                    icon: 'success', title: 'Importação concluída',
+                    html: novas ? 'Novos resumos: <b>' + r.resumos + '</b> · XML completos: <b>' + r.completos + '</b>' : 'Nenhuma nota nova no ERP.'
+                });
+                carregarStatus(); carregar(1);
+            }).fail(function (xhr) { Swal.fire({ icon: 'error', title: 'Importação não realizada', text: erro(xhr) }); })
+              .always(function () { b.prop('disabled', false); });
+        });
+
         /* certificado */
         var BTN_SALVAR = '<i class="fas fa-save"></i> Salvar certificado';
         function certPronto() {

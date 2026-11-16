@@ -9,6 +9,7 @@
             </td>
             <td class="text-right">
                 <button type="button" class="btn btn-light border" id="btnCertificado"><i class="fas fa-lock"></i> Certificado A1</button>
+                <button type="button" class="btn btn-light border" id="btnImportarErp" title="Traz do ERP Singular as notas, XMLs e ciências já recebidos"><i class="fas fa-database"></i> Importar do ERP</button>
                 <button type="button" class="btn btn-success" id="btnConsultar"><i class="fas fa-sync"></i> Buscar na SEFAZ</button>
             </td>
         </tr>
@@ -136,6 +137,7 @@
             documentos: "{{ route('nfeRecebidas.documentos') }}",
             certificado: "{{ route('nfeRecebidas.certificado') }}",
             consultar: "{{ route('nfeRecebidas.consultar') }}",
+            importarErp: "{{ route('nfeRecebidas.importarErp') }}",
             ciencia: "{{ route('nfeRecebidas.ciencia') }}",
             buscarChave: "{{ route('nfeRecebidas.buscarChave') }}",
             xml: "{{ url('nfeRecebidas/xml') }}",
