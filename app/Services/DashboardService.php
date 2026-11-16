@@ -177,10 +177,17 @@ class DashboardService
                 break;
 
             case 'faturamento':
+                $titulo = 'Faturamento no período (relatório de vendas: notas fiscais + pedidos faturados)';
+                $linhas = collect($this->linhasRelatorioVendas($filtros['data_inicial'], $filtros['data_final'], $filtros))
+                    ->sortBy('EMISSAO')->values()->map(function ($l) { return (object) $l; });
+                $colunas = [$texto('ORIGEM', 'Origem'), $texto('DOCUMENTO', 'Documento'), $texto('SERIE', 'Série'), $data('EMISSAO', 'Emissão'), $texto('CLIENTE', 'Cliente'), $texto('REPRESENTANTE', 'Representante'), $moeda('VALOR', 'Valor')];
+                $nota = 'Mesmo critério e mesmo total da tela de vendas: valor dos produtos (nota e pedido) + IPI. Inclui as notas fiscais de venda e os pedidos com situação personalizada FATURADO, que entram mesmo sem nota.';
+                break;
+
             case 'ticket_medio':
             case 'pedidos_pendentes':
                 $pendentes = $card === 'pedidos_pendentes';
-                $titulos = ['faturamento' => 'Faturamento no período', 'ticket_medio' => 'Ticket médio (pedidos válidos)', 'pedidos_pendentes' => 'Pedidos pendentes'];
+                $titulos = ['ticket_medio' => 'Ticket médio (pedidos válidos)', 'pedidos_pendentes' => 'Pedidos pendentes'];
                 $titulo = $titulos[$card];
                 list($where, $bind) = $this->montarFiltroDav($filtros, 'D');
                 $cond = $pendentes
@@ -1001,8 +1008,76 @@ class DashboardService
         list($where, $bindings) = $this->montarFiltroDav($filtros, 'D');
         $sql = "SELECT COALESCE(SUM(CASE WHEN D.DAV_SITUACAO IN (1,3) THEN D.DAV_VALOR_LIQUIDO ELSE 0 END),0) AS VENDAS_PERIODO, COALESCE(SUM(CASE WHEN D.DAV_SITUACAO IN (1,3) THEN 1 ELSE 0 END),0) AS QTD_PEDIDOS_VALIDOS, CASE WHEN SUM(CASE WHEN D.DAV_SITUACAO IN (1,3) THEN 1 ELSE 0 END)>0 THEN SUM(CASE WHEN D.DAV_SITUACAO IN (1,3) THEN D.DAV_VALOR_LIQUIDO ELSE 0 END)/SUM(CASE WHEN D.DAV_SITUACAO IN (1,3) THEN 1 ELSE 0 END) ELSE 0 END AS TICKET_MEDIO, COALESCE(SUM(CASE WHEN D.DAV_SITUACAO=1 AND COALESCE(D.DAV_SITUACAO_ENTREGA,0) IN (0,1) AND COALESCE(D.DSP_CODIGO,0)=0 THEN 1 ELSE 0 END),0) AS QTD_PEDIDOS_PENDENTES, COALESCE(SUM(CASE WHEN D.DAV_SITUACAO=1 AND COALESCE(D.DAV_SITUACAO_ENTREGA,0) IN (0,1) AND COALESCE(D.DSP_CODIGO,0)=0 THEN D.DAV_VALOR_LIQUIDO ELSE 0 END),0) AS VALOR_PEDIDOS_PENDENTES FROM DAV D WHERE D.DAV_TIPO='PD' AND D.DAV_SITUACAO IN(0,1,3) AND CAST(D.DAV_DATA_EMISSAO AS DATE) BETWEEN ? AND ? {$where}";
         $resultado = $this->primeiro($sql, array_merge([$filtros['data_inicial'], $filtros['data_final']], $bindings));
+        $fat = $this->obterFaturamentoNotas($filtros);
+        $resultado->FATURAMENTO_NF = (float) ($fat->ATUAL ?? 0);
+        $resultado->QTD_NF = (int) ($fat->QTD_ATUAL ?? 0);
+        $resultado->FATURAMENTO_NF_ANTERIOR = (float) ($fat->ANTERIOR ?? 0);
+        $resultado->FATURAMENTO_NOTAS = (float) $fat->NOTAS_ATUAL;
+        $resultado->FATURAMENTO_ESPECIAIS = (float) $fat->PEDIDOS_ESPECIAIS_ATUAL;
+        $resultado->QTD_ESPECIAIS = (int) $fat->PEDIDOS_ESPECIAIS_QTD;
         $resultado->CLIENTES_ATENDIDOS = count($this->selecionar("SELECT D.PART_CODIGO FROM DAV D WHERE D.DAV_TIPO='PD' AND D.DAV_SITUACAO IN(1,3) AND D.PART_CODIGO IS NOT NULL AND CAST(D.DAV_DATA_EMISSAO AS DATE) BETWEEN ? AND ? {$where} GROUP BY D.PART_CODIGO", array_merge([$filtros['data_inicial'], $filtros['data_final']], $bindings)));
         return $resultado;
+    }
+
+    /**
+     * Linhas do relatório de vendas (App\Helpers\Vendas, tela /vendas), agrupadas por documento.
+     * Faturamento = FAT_BRUTO + FAT_BRUTO_2 + IPI, exatamente como o total da tela. Inclui as notas fiscais de venda
+     * e os pedidos com situação personalizada FATURADO (DSP_CODIGO = 1). Cache curto porque a consulta é pesada
+     * e o dashboard atualiza sozinho.
+     */
+    protected function linhasRelatorioVendas($inicio, $fim, array $filtros)
+    {
+        $repPart = 0;
+        if (!empty($filtros['rep_codigo'])) {
+            $rep = $this->primeiro('SELECT FIRST 1 PART_CODIGO FROM PARTICIPANTE WHERE PART_REPRESENTANTE_CODIGO = ?', [(int) $filtros['rep_codigo']]);
+            $repPart = (int) ($rep->PART_CODIGO ?? -1);
+        }
+        $cliente = '';
+        if (!empty($filtros['part_codigo'])) {
+            $cli = $this->primeiro('SELECT FIRST 1 PART_NOME FROM PARTICIPANTE WHERE PART_CODIGO = ?', [(int) $filtros['part_codigo']]);
+            $cliente = strtoupper(str_replace("'", "''", trim((string) ($cli->PART_NOME ?? ''))));
+        }
+        $chave = 'dashboard_faturamento_' . md5(implode('|', [$inicio, $fim, $repPart, $cliente]));
+
+        return \Illuminate\Support\Facades\Cache::remember($chave, 60, function () use ($inicio, $fim, $repPart, $cliente) {
+            $rows = collect(\App\Helpers\Vendas::vendas($inicio, $fim, $cliente, '', '', $repPart ? 'restrito' : 'todos', $repPart));
+            return $rows->groupBy(function ($r) {
+                return $r->TIPO_RECEITA . '|' . $r->DOCUMENTO . '|' . $r->DATA_COMP . '|' . $r->COD_CLIENTE . '|' . $r->CLIENTE;
+            })->map(function ($g) {
+                $f = $g->first();
+                return [
+                    'ORIGEM' => $f->TIPO_RECEITA === 'NF' ? 'Nota fiscal' : 'Pedido faturado (sit. especial)',
+                    'TIPO_RECEITA' => $f->TIPO_RECEITA,
+                    'DOCUMENTO' => trim((string) $f->DOCUMENTO),
+                    'SERIE' => trim((string) $f->SERIE_FAT),
+                    'EMISSAO' => substr((string) $f->DATA_COMP, 0, 10),
+                    'CLIENTE' => trim((string) $f->CLIENTE),
+                    'REPRESENTANTE' => trim((string) $f->VENDEDOR),
+                    'VALOR' => (float) $g->sum('FAT_BRUTO') + (float) $g->sum('FAT_BRUTO_2') + (float) $g->sum('IPI'),
+                ];
+            })->values()->all();
+        });
+    }
+
+    public function obterFaturamentoNotas(array $filtros)
+    {
+        $anterior = $this->calcularPeriodoAnterior($filtros['data_inicial'], $filtros['data_final']);
+        $atual = collect($this->linhasRelatorioVendas($filtros['data_inicial'], $filtros['data_final'], $filtros));
+        $ant = collect($this->linhasRelatorioVendas($anterior['data_inicial'], $anterior['data_final'], $filtros));
+        $notas = $atual->where('TIPO_RECEITA', 'NF');
+        $especiais = $atual->where('TIPO_RECEITA', '!=', 'NF');
+
+        return (object) [
+            'NOTAS_ATUAL' => (float) $notas->sum('VALOR'),
+            'NOTAS_QTD' => $notas->count(),
+            'NOTAS_ANTERIOR' => (float) $ant->where('TIPO_RECEITA', 'NF')->sum('VALOR'),
+            'PEDIDOS_ESPECIAIS_ATUAL' => (float) $especiais->sum('VALOR'),
+            'PEDIDOS_ESPECIAIS_QTD' => $especiais->count(),
+            'PEDIDOS_ESPECIAIS_ANTERIOR' => (float) $ant->where('TIPO_RECEITA', '!=', 'NF')->sum('VALOR'),
+            'ATUAL' => (float) $atual->sum('VALOR'),
+            'QTD_ATUAL' => $atual->count(),
+            'ANTERIOR' => (float) $ant->sum('VALOR'),
+        ];
     }
 
     public function obterComparativoVendas(array $filtros)
@@ -1088,13 +1163,16 @@ class DashboardService
 
         return [
             'vendas' => [
-                'formula' => 'SUM(DAV.DAV_VALOR_LIQUIDO)',
-                'regras' => ["DAV_TIPO = 'PD'", 'DAV_SITUACAO IN (1, 3)', 'DAV_DATA_EMISSAO entre data inicial e final'],
+                'formula' => 'FAT_BRUTO + FAT_BRUTO_2 + IPI (total da tela de vendas)',
+                'regras' => ['Mesma consulta da tela de vendas (Helpers\\Vendas)', 'Notas fiscais de saída emitidas (NF_SITUACAO = 1) com CFOP do grupo de vendas ou industrialização', 'Mais pedidos com situação personalizada FATURADO (DSP_CODIGO = 1)', 'Data de emissão entre data inicial e final'],
                 'filtros' => $filtrosAplicados,
                 'composicao' => [
-                    'valor_periodo' => (float) ($comercial->VENDAS_PERIODO ?? 0),
-                    'quantidade_pedidos' => (int) ($comercial->QTD_PEDIDOS_VALIDOS ?? 0),
-                    'valor_periodo_anterior' => (float) ($comparativoVendas->VENDAS_ANTERIORES ?? 0),
+                    'valor_periodo' => (float) ($comercial->FATURAMENTO_NF ?? 0),
+                    'quantidade_notas' => (int) ($comercial->QTD_NF ?? 0),
+                    'valor_notas_fiscais' => (float) ($comercial->FATURAMENTO_NOTAS ?? 0),
+                    'valor_pedidos_faturados_especiais' => (float) ($comercial->FATURAMENTO_ESPECIAIS ?? 0),
+                    'quantidade_pedidos_especiais' => (int) ($comercial->QTD_ESPECIAIS ?? 0),
+                    'valor_periodo_anterior' => (float) ($comercial->FATURAMENTO_NF_ANTERIOR ?? 0),
                 ],
             ],
             'receber' => [
