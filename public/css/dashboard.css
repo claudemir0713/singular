@@ -263,3 +263,14 @@ html.audit-aberto,html.audit-aberto body{overflow:hidden !important}
 .card-proj-receber .dashboard-prev-toggle{margin-top:8px}
 
 .dashboard-card-resumo{border-top:1px dashed #dfe5e8;margin-top:10px;padding-top:7px;font-size:11px;color:#657681}.dashboard-card-resumo>div{display:flex;justify-content:space-between;gap:8px;margin-top:3px}.dashboard-card-resumo-total{border-top:1px solid #dfe5e8;color:#263846;font-weight:700;margin-top:6px!important;padding-top:4px}
+
+.card-proj-pagar{--accent:#d94d49;background:linear-gradient(180deg,#fef5f4 0%,#fff 62%);border-color:#f3d3d1}
+.card-proj-pagar:before{background:repeating-linear-gradient(180deg,#d94d49 0 7px,#f0b3b1 7px 11px);width:4px}
+.card-proj-pagar .dashboard-card-top>span:first-child:after{background:#fbe3e2;border-radius:9px;color:#c0392b;content:'ESTIMATIVA';font-size:8.5px;font-weight:700;letter-spacing:.5px;margin-left:6px;padding:1px 6px;vertical-align:1px}
+.card-proj-pagar .dashboard-card-value{color:#b83b37}
+.card-proj-pagar .dashboard-card-icon{color:#d94d49}
+.card-proj-pagar .dashboard-seg{background:#fbe6e5}
+.card-proj-pagar .dashboard-seg button{color:#a8524f}
+.card-proj-pagar .dashboard-seg button:hover{color:#b83b37}
+.card-proj-pagar .dashboard-seg button.ativo{box-shadow:0 1px 2px rgba(184,59,55,.25);color:#b83b37;background:#fff}
+.card-proj-pagar .dashboard-prev-toggle{margin-top:8px}
