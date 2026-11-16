@@ -73,7 +73,7 @@
                 var marc = selecionadas[d.chave] ? ' checked' : '';
                 var acoes = '';
                 if (d.estado === 'com_xml') {
-                    acoes = '<a class="btn btn-sm btn-primary" title="Baixar XML" href="' + R.xml + '/' + d.chave + '"><i class="fas fa-download"></i></a>';
+                    acoes = '<a class="btn btn-sm btn-primary" title="Baixar XML" target="_blank" href="' + R.xml + '/' + d.chave + '"><i class="fas fa-download"></i></a>';
                 } else if (d.estado === 'aguardando') {
                     acoes = '<button class="btn btn-sm btn-outline-primary btn-buscar" data-chave="' + d.chave + '" title="Buscar o XML desta nota na SEFAZ"><i class="fas fa-search"></i></button>';
                 } else {

@@ -515,7 +515,7 @@ class SefazDistribuicaoService
             $db->table('nfe_distribuicao')->insert([
                 'nsu' => $nsu, 'chave' => $chave, 'tipo' => 'procNFe', 'cnpj_emitente' => $emit ? $this->digitos($this->filho($emit, 'CNPJ') ?? $this->filho($emit, 'CPF')) : null,
                 'nome_emitente' => $emit ? mb_substr((string) $this->filho($emit, 'xNome'), 0, 150) : null, 'dh_emissao' => $this->dataHora($this->no($d, 'dhEmi')),
-                'valor_nf' => (float) $this->no($d, 'vNF'), 'situacao' => '1', 'xml_arquivo' => $rel, 'created_at' => now(),
+                'valor_nf' => (float) $this->no($d, 'vNF'), 'situacao' => '1', 'xml_arquivo' => $rel, 'xml' => $xml, 'created_at' => now(),
             ]);
             // o resumo da mesma chave passa a apontar para o XML completo
             $db->table('nfe_distribuicao')->where('chave', $chave)->where('tipo', 'resNFe')->update(['xml_arquivo' => $rel]);
@@ -681,6 +681,9 @@ class SefazDistribuicaoService
     /** Conteudo do XML completo arquivado para uma chave. */
     public function xmlCompleto(string $chave): ?string
     {
+        // o XML fica no banco (compartilhado entre servidores); o arquivo em disco e so reserva para registros antigos
+        $xml = $this->db()->table('nfe_distribuicao')->where('chave', $chave)->whereNotNull('xml')->orderByDesc('id')->value('xml');
+        if ($xml) { return $xml; }
         $l = $this->db()->table('nfe_distribuicao')->where('chave', $chave)->whereNotNull('xml_arquivo')->orderByDesc('id')->first();
         $abs = $l ? storage_path('app/' . $l->xml_arquivo) : null;
         return ($abs && is_file($abs)) ? file_get_contents($abs) : null;
