@@ -73,11 +73,167 @@ class DashboardService
         ];
     }
 
+    /**
+     * Auditoria (drill-down) de um card: devolve os lançamentos que compõem o valor exibido.
+     * Usa exatamente os mesmos critérios das consultas dos cards.
+     */
+    public function obterDetalheCard($card, array $filtros, $limite = 10000)
+    {
+        $filtros = $this->normalizarFiltros($filtros);
+        $moeda = function ($k, $l) { return ['k' => $k, 'l' => $l, 't' => 'moeda']; };
+        $data = function ($k, $l) { return ['k' => $k, 'l' => $l, 't' => 'data']; };
+        $texto = function ($k, $l) { return ['k' => $k, 'l' => $l, 't' => 'texto']; };
+        $num = function ($k, $l) { return ['k' => $k, 'l' => $l, 't' => 'num']; };
+        $hoje = Carbon::today()->format('Y-m-d');
+        $dias = function ($linhas) use ($hoje) {
+            foreach ($linhas as $l) {
+                $l->DIAS_ATRASO = !empty($l->VENCIMENTO) && substr($l->VENCIMENTO, 0, 10) < $hoje
+                    ? Carbon::parse(substr($l->VENCIMENTO, 0, 10))->diffInDays(Carbon::parse($hoje)) : 0;
+            }
+            return $linhas;
+        };
+
+        $colunasTitulo = [$texto('DOCUMENTO', 'Documento'), $texto('PARTICIPANTE', 'Cliente / Fornecedor'), $data('EMISSAO', 'Emissão'), $data('VENCIMENTO', 'Vencimento'), $num('DIAS_ATRASO', 'Dias atraso')];
+        $titulo = '';
+        $colunas = [];
+        $linhas = collect();
+        $nota = null;
+
+        switch ($card) {
+            case 'receber':
+                $titulo = 'Contas a receber (duplicatas)';
+                list($where, $bind) = $this->montarFiltroRecebivelDuplicata($filtros);
+                $linhas = collect($this->selecionar("SELECT FIRST {$limite} FC.CON_CODIGO, FC.CON_NUMERO, FC.CON_SEQUENCIA, FC.CON_TIPO, CLI.PART_NOME AS PARTICIPANTE, CAST(FC.CON_DT_EMISSAO AS DATE) AS EMISSAO, CAST(FC.CON_DT_VENCIMENTO AS DATE) AS VENCIMENTO, FC.CON_VALOR_ORIGINAL, FC.CON_VALOR_TOTAL_PAGO, FC.CON_VALOR_DESCONTO, FC.CON_VALOR_OUTRASDESPESAS, FC.CON_VALOR_CORRIGIDO FROM FIN_CONTAS FC LEFT JOIN PARTICIPANTE CLI ON CLI.PART_CODIGO = FC.PART_CODIGO WHERE FC.CON_TIPO IN (0,2) AND FC.CON_PREVISAO=0 AND FC.CON_SITUACAO IN (0,1) AND COALESCE(FC.CON_VALOR_CORRIGIDO,0)>0 {$where} ORDER BY FC.CON_DT_VENCIMENTO, FC.CON_NUMERO, FC.CON_SEQUENCIA", $bind));
+                $dias($linhas)->each(function ($l) {
+                    $cred = (int) $l->CON_TIPO === 2;
+                    $l->DOCUMENTO = trim((string) $l->CON_NUMERO) . '/' . $l->CON_SEQUENCIA . ($cred ? ' (crédito)' : '');
+                    $l->ORIGINAL = $cred ? -(float) $l->CON_VALOR_ORIGINAL : (float) $l->CON_VALOR_ORIGINAL;
+                    $l->PAGO = $cred ? 0 : (float) $l->CON_VALOR_TOTAL_PAGO;
+                    $l->DESCONTO = $cred ? 0 : (float) $l->CON_VALOR_DESCONTO;
+                    $l->OUTRAS = $cred ? 0 : (float) $l->CON_VALOR_OUTRASDESPESAS;
+                    $l->CREDITO = $cred ? (float) $l->CON_VALOR_CORRIGIDO : 0;
+                    $l->VALOR = $l->ORIGINAL - $l->PAGO - $l->CREDITO - $l->DESCONTO + $l->OUTRAS;
+                });
+                $colunas = array_merge($colunasTitulo, [$moeda('ORIGINAL', 'Original'), $moeda('PAGO', 'Pago'), $moeda('DESCONTO', 'Desconto'), $moeda('OUTRAS', 'Outras desp.'), $moeda('CREDITO', 'Crédito'), $moeda('VALOR', 'Valor no card')]);
+                $nota = 'Valor no card = original − pago − desconto + outras despesas − crédito (sem juros e multas).';
+                break;
+
+            case 'pagar':
+            case 'prev_pagar':
+            case 'prev_receber':
+                $tipo = $card === 'prev_receber' ? 0 : 1;
+                $previsao = $card === 'pagar' ? 0 : 1;
+                $titulos = ['pagar' => 'Contas a pagar', 'prev_pagar' => 'Previsão a pagar', 'prev_receber' => 'Previsão a receber'];
+                $titulo = $titulos[$card];
+                list($where, $bind) = $this->montarFiltroContasPagar($filtros, 'FP');
+                $linhas = collect($this->selecionar("SELECT FIRST {$limite} FP.CON_CODIGO, FP.CON_NUMERO, FP.CON_SEQUENCIA, PAR.PART_NOME AS PARTICIPANTE, CAST(FP.CON_DT_EMISSAO AS DATE) AS EMISSAO, CAST(FP.CON_DT_VENCIMENTO AS DATE) AS VENCIMENTO, FP.CON_VALOR_ORIGINAL, FP.CON_VALOR_TOTAL_PAGO, FP.CON_VALOR_CORRIGIDO FROM FIN_CONTAS FP LEFT JOIN PARTICIPANTE PAR ON PAR.PART_CODIGO = FP.PART_CODIGO WHERE FP.CON_TIPO=? AND FP.CON_PREVISAO=? AND FP.CON_SITUACAO IN (0,1) AND COALESCE(FP.CON_VALOR_CORRIGIDO,0)>0 {$where} ORDER BY FP.CON_DT_VENCIMENTO, FP.CON_NUMERO, FP.CON_SEQUENCIA", array_merge([$tipo, $previsao], $bind)));
+                $dias($linhas)->each(function ($l) {
+                    $l->DOCUMENTO = trim((string) $l->CON_NUMERO) . '/' . $l->CON_SEQUENCIA;
+                    $l->ORIGINAL = (float) $l->CON_VALOR_ORIGINAL;
+                    $l->PAGO = (float) $l->CON_VALOR_TOTAL_PAGO;
+                    $l->VALOR = (float) $l->CON_VALOR_CORRIGIDO;
+                });
+                $colunas = array_merge($colunasTitulo, [$moeda('ORIGINAL', 'Original'), $moeda('PAGO', 'Pago'), $moeda('VALOR', 'Saldo (valor no card)')]);
+                break;
+
+            case 'cheques':
+            case 'inadimplencia':
+                $inad = $card === 'inadimplencia';
+                $titulo = $inad ? 'Inadimplência (títulos vencidos)' : 'Cheques a receber';
+                list($wCh, $bCh) = $this->montarFiltroRecebivelCheque($filtros);
+                $filtroVencido = $inad ? 'AND CAST(CHQ.CHQ_BOM_PARA AS DATE)<=CURRENT_DATE ' : '';
+                $cheques = collect($this->selecionar("SELECT FIRST {$limite} CHQ.CHQ_CODIGO, CHQ.CHQ_CHEQUE, CHQ.CHQ_BANCO, CAST(CHQ.CHQ_BOM_PARA AS DATE) AS VENCIMENTO, CAST(CHQ.CHQ_DT_EMISSAO AS DATE) AS EMISSAO, CHQ.CHQ_VALOR, (SELECT FIRST 1 CLI.PART_NOME FROM FIN_CONTAS_CHEQUES FCQ INNER JOIN FIN_CONTAS FC ON FC.CON_CODIGO=FCQ.CON_CODIGO LEFT JOIN PARTICIPANTE CLI ON CLI.PART_CODIGO=FC.PART_CODIGO WHERE FCQ.CHQ_CODIGO=CHQ.CHQ_CODIGO AND FC.CON_TIPO=0) AS PARTICIPANTE FROM CHEQUE CHQ WHERE CHQ.CHQ_TERC=0 AND CHQ.CHQ_SITUACAO=0 AND COALESCE(CHQ.CHQ_VALOR,0)>0 {$filtroVencido}AND EXISTS (SELECT 1 FROM FIN_CONTAS_CHEQUES FCQ INNER JOIN FIN_CONTAS FC ON FC.CON_CODIGO=FCQ.CON_CODIGO WHERE FCQ.CHQ_CODIGO=CHQ.CHQ_CODIGO AND FC.CON_TIPO=0) {$wCh} ORDER BY CHQ.CHQ_BOM_PARA", $bCh));
+                $dias($cheques)->each(function ($l) {
+                    $l->DOCUMENTO = 'Cheque ' . trim((string) $l->CHQ_CHEQUE) . ' (banco ' . trim((string) $l->CHQ_BANCO) . ')';
+                    $l->ORIGINAL = (float) $l->CHQ_VALOR;
+                    $l->PAGO = 0;
+                    $l->VALOR = (float) $l->CHQ_VALOR;
+                    $l->ORIGEM = 'Cheque';
+                });
+                $duplicatas = collect();
+                if ($inad) {
+                    list($wDp, $bDp) = $this->montarFiltroRecebivelDuplicata($filtros);
+                    $duplicatas = collect($this->selecionar("SELECT FIRST {$limite} FC.CON_CODIGO, FC.CON_NUMERO, FC.CON_SEQUENCIA, CLI.PART_NOME AS PARTICIPANTE, CAST(FC.CON_DT_EMISSAO AS DATE) AS EMISSAO, CAST(FC.CON_DT_VENCIMENTO AS DATE) AS VENCIMENTO, FC.CON_VALOR_ORIGINAL, FC.CON_VALOR_TOTAL_PAGO, FC.CON_VALOR_CORRIGIDO FROM FIN_CONTAS FC LEFT JOIN PARTICIPANTE CLI ON CLI.PART_CODIGO=FC.PART_CODIGO WHERE FC.CON_TIPO=0 AND FC.CON_PREVISAO=0 AND FC.CON_SITUACAO IN (0,1) AND COALESCE(FC.CON_VALOR_CORRIGIDO,0)>0 AND CAST(FC.CON_DT_VENCIMENTO AS DATE)<=CURRENT_DATE {$wDp} ORDER BY FC.CON_DT_VENCIMENTO, FC.CON_NUMERO, FC.CON_SEQUENCIA", $bDp));
+                    $dias($duplicatas)->each(function ($l) {
+                        $l->DOCUMENTO = trim((string) $l->CON_NUMERO) . '/' . $l->CON_SEQUENCIA;
+                        $l->ORIGINAL = (float) $l->CON_VALOR_ORIGINAL;
+                        $l->PAGO = (float) $l->CON_VALOR_TOTAL_PAGO;
+                        $l->VALOR = (float) $l->CON_VALOR_CORRIGIDO;
+                        $l->ORIGEM = 'Duplicata';
+                    });
+                }
+                $linhas = $duplicatas->concat($cheques)->sortBy('VENCIMENTO')->values();
+                $colunas = array_merge([$texto('ORIGEM', 'Origem')], $colunasTitulo, [$moeda('ORIGINAL', 'Original'), $moeda('PAGO', 'Pago'), $moeda('VALOR', 'Saldo (valor no card)')]);
+                if ($inad) {
+                    $nota = 'Lista os títulos vencidos (duplicatas + cheques). O percentual do card divide este total pelo total emitido no período.';
+                }
+                break;
+
+            case 'faturamento':
+            case 'ticket_medio':
+            case 'pedidos_pendentes':
+                $pendentes = $card === 'pedidos_pendentes';
+                $titulos = ['faturamento' => 'Faturamento no período', 'ticket_medio' => 'Ticket médio (pedidos válidos)', 'pedidos_pendentes' => 'Pedidos pendentes'];
+                $titulo = $titulos[$card];
+                list($where, $bind) = $this->montarFiltroDav($filtros, 'D');
+                $cond = $pendentes
+                    ? "D.DAV_SITUACAO=1 AND COALESCE(D.DAV_SITUACAO_ENTREGA,0) IN (0,1) AND COALESCE(D.DSP_CODIGO,0)=0"
+                    : "D.DAV_SITUACAO IN (1,3)";
+                $linhas = collect($this->selecionar("SELECT FIRST {$limite} D.DAV_NUMERO, D.DAV_CONTROLE, CAST(D.DAV_DATA_EMISSAO AS DATE) AS EMISSAO, CAST(D.DAV_DATA_PREVISAO_ENTREGA AS DATE) AS PREV_ENTREGA, CLI.PART_NOME AS CLIENTE, REP.PART_NOME AS REPRESENTANTE, D.DAV_SITUACAO, D.DAV_SITUACAO_ENTREGA, DSP.DSP_DESCRICAO AS PERSONALIZADA, D.DAV_PERCENTUAL_ENTREGA AS PERC_ENTREGA, D.DAV_VALOR_LIQUIDO FROM DAV D LEFT JOIN PARTICIPANTE CLI ON CLI.PART_CODIGO=D.PART_CODIGO LEFT JOIN PARTICIPANTE REP ON REP.PART_CODIGO=D.PART_REPRESENTANTE_CODIGO LEFT JOIN DAV_SITUACOES_PERSONALIZADAS DSP ON DSP.DSP_CODIGO=D.DSP_CODIGO WHERE D.DAV_TIPO='PD' AND {$cond} AND CAST(D.DAV_DATA_EMISSAO AS DATE) BETWEEN ? AND ? {$where} ORDER BY D.DAV_NUMERO DESC", array_merge([$filtros['data_inicial'], $filtros['data_final']], $bind)));
+                $sit = [0 => 'Pendente', 1 => 'Confirmado', 2 => 'Cancelado', 3 => 'Faturado'];
+                $ent = [0 => 'Pendente', 1 => 'Parcial', 2 => 'Entregue'];
+                $linhas->each(function ($l) use ($sit, $ent) {
+                    $l->PEDIDO = $l->DAV_NUMERO;
+                    $l->SITUACAO = isset($sit[(int) $l->DAV_SITUACAO]) ? $sit[(int) $l->DAV_SITUACAO] : $l->DAV_SITUACAO;
+                    $l->ENTREGA = isset($ent[(int) $l->DAV_SITUACAO_ENTREGA]) ? $ent[(int) $l->DAV_SITUACAO_ENTREGA] : '';
+                    $l->PERSONALIZADA = trim((string) $l->PERSONALIZADA);
+                    $l->PERC_ENTREGA = (float) $l->PERC_ENTREGA;
+                    $l->VALOR = (float) $l->DAV_VALOR_LIQUIDO;
+                });
+                $colunas = [$num('PEDIDO', 'Pedido'), $texto('DAV_CONTROLE', 'Controle'), $data('EMISSAO', 'Emissão'), $data('PREV_ENTREGA', 'Prev. entrega'), $texto('CLIENTE', 'Cliente'), $texto('REPRESENTANTE', 'Representante'), $texto('SITUACAO', 'Situação'), $texto('ENTREGA', 'Entrega'), $texto('PERSONALIZADA', 'Sit. personalizada'), $num('PERC_ENTREGA', '% entrega'), $moeda('VALOR', 'Valor líquido')];
+                if ($card === 'ticket_medio') {
+                    $nota = 'Ticket médio = total dos pedidos ÷ quantidade de pedidos listados.';
+                }
+                break;
+
+            case 'clientes_atendidos':
+                $titulo = 'Clientes atendidos';
+                list($where, $bind) = $this->montarFiltroDav($filtros, 'D');
+                $linhas = collect($this->selecionar("SELECT FIRST {$limite} D.PART_CODIGO AS CODIGO, MAX(CLI.PART_NOME) AS CLIENTE, COUNT(*) AS QTD_PEDIDOS, MIN(CAST(D.DAV_DATA_EMISSAO AS DATE)) AS PRIMEIRO, MAX(CAST(D.DAV_DATA_EMISSAO AS DATE)) AS ULTIMO, SUM(D.DAV_VALOR_LIQUIDO) AS VALOR FROM DAV D LEFT JOIN PARTICIPANTE CLI ON CLI.PART_CODIGO=D.PART_CODIGO WHERE D.DAV_TIPO='PD' AND D.DAV_SITUACAO IN (1,3) AND D.PART_CODIGO IS NOT NULL AND CAST(D.DAV_DATA_EMISSAO AS DATE) BETWEEN ? AND ? {$where} GROUP BY D.PART_CODIGO ORDER BY 6 DESC", array_merge([$filtros['data_inicial'], $filtros['data_final']], $bind)));
+                $linhas->each(function ($l) {
+                    $l->VALOR = (float) $l->VALOR;
+                    $l->QTD_PEDIDOS = (int) $l->QTD_PEDIDOS;
+                });
+                $colunas = [$num('CODIGO', 'Código'), $texto('CLIENTE', 'Cliente'), $num('QTD_PEDIDOS', 'Pedidos'), $data('PRIMEIRO', '1º pedido'), $data('ULTIMO', 'Último pedido'), $moeda('VALOR', 'Valor líquido')];
+                break;
+
+            default:
+                throw new \InvalidArgumentException('Card inválido.');
+        }
+
+        $linhas = $linhas->map(function ($l) { return (array) $l; })->values();
+        $total = (float) $linhas->sum('VALOR');
+
+        return [
+            'card' => $card,
+            'titulo' => $titulo,
+            'colunas' => $colunas,
+            'linhas' => $linhas,
+            'quantidade' => $linhas->count(),
+            'total' => $total,
+            'media' => $linhas->count() ? $total / $linhas->count() : 0,
+            'truncado' => $linhas->count() >= $limite,
+            'nota' => $nota,
+        ];
+    }
+
     public function obterCardsFinanceiros(array $filtros)
     {
         $duplicatas = $this->obterResumoDuplicatas($filtros);
         $cheques = $this->obterResumoCheques($filtros);
         $pagar = $this->obterResumoPagar($filtros);
+        $previsaoReceber = $this->obterResumoPrevisao($filtros, 0);
+        $previsaoPagar = $this->obterResumoPrevisao($filtros, 1);
 
         $totalDuplicatasSemEncargos = (float) ($duplicatas->VALOR_ORIGINAL ?? 0)
             - (float) ($duplicatas->VALOR_PAGO ?? 0)
@@ -133,6 +289,12 @@ class DashboardService
             'QTD_TITULOS_RECEBER_CREDITOS' => (int) ($duplicatas->QTD_CREDITOS ?? 0),
             'QTD_TITULOS_RECEBER_CHEQUES' => (int) ($cheques->QUANTIDADE ?? 0),
             'QTD_TITULOS_PAGAR' => (int) ($pagar->QUANTIDADE ?? 0),
+            'PREVISAO_RECEBER' => (float) ($previsaoReceber->TOTAL ?? 0),
+            'PREVISAO_RECEBER_VENCIDA' => (float) ($previsaoReceber->VENCIDO ?? 0),
+            'QTD_PREVISAO_RECEBER' => (int) ($previsaoReceber->QUANTIDADE ?? 0),
+            'PREVISAO_PAGAR' => (float) ($previsaoPagar->TOTAL ?? 0),
+            'PREVISAO_PAGAR_VENCIDA' => (float) ($previsaoPagar->VENCIDO ?? 0),
+            'QTD_PREVISAO_PAGAR' => (int) ($previsaoPagar->QUANTIDADE ?? 0),
         ];
     }
 
@@ -316,6 +478,17 @@ class DashboardService
         return $this->primeiro("SELECT COALESCE(SUM(FP.CON_VALOR_CORRIGIDO),0) AS TOTAL, COALESCE(SUM(CASE WHEN CAST(FP.CON_DT_VENCIMENTO AS DATE)<=CURRENT_DATE THEN FP.CON_VALOR_CORRIGIDO ELSE 0 END),0) AS VENCIDO, COALESCE(SUM(CASE WHEN CAST(FP.CON_DT_VENCIMENTO AS DATE)>CURRENT_DATE THEN FP.CON_VALOR_CORRIGIDO ELSE 0 END),0) AS A_VENCER, COUNT(*) AS QUANTIDADE FROM FIN_CONTAS FP WHERE FP.CON_TIPO=1 AND FP.CON_PREVISAO=0 AND FP.CON_SITUACAO IN(0,1) AND COALESCE(FP.CON_VALOR_CORRIGIDO,0)>0 {$where}", $bindings);
     }
 
+    /**
+     * Lançamentos de previsão (CON_PREVISAO = 1) ainda em aberto.
+     * $tipo: 0 = a receber, 1 = a pagar.
+     */
+    protected function obterResumoPrevisao(array $filtros, $tipo)
+    {
+        list($where, $bindings) = $this->montarFiltroContasPagar($filtros, 'FP');
+        array_unshift($bindings, (int) $tipo);
+        return $this->primeiro("SELECT COALESCE(SUM(FP.CON_VALOR_CORRIGIDO),0) AS TOTAL, COALESCE(SUM(CASE WHEN CAST(FP.CON_DT_VENCIMENTO AS DATE)<=CURRENT_DATE THEN FP.CON_VALOR_CORRIGIDO ELSE 0 END),0) AS VENCIDO, COUNT(*) AS QUANTIDADE FROM FIN_CONTAS FP WHERE FP.CON_TIPO=? AND FP.CON_PREVISAO=1 AND FP.CON_SITUACAO IN(0,1) AND COALESCE(FP.CON_VALOR_CORRIGIDO,0)>0 {$where}", $bindings);
+    }
+
     protected function obterPrevisaoDuplicatas(array $filtros)
     {
         list($where, $bindings) = $this->montarFiltroRecebivelDuplicata($filtros);
@@ -432,7 +605,7 @@ class DashboardService
     public function obterCardsComerciais(array $filtros)
     {
         list($where, $bindings) = $this->montarFiltroDav($filtros, 'D');
-        $sql = "SELECT COALESCE(SUM(CASE WHEN D.DAV_SITUACAO IN (1,3) THEN D.DAV_VALOR_LIQUIDO ELSE 0 END),0) AS VENDAS_PERIODO, COALESCE(SUM(CASE WHEN D.DAV_SITUACAO IN (1,3) THEN 1 ELSE 0 END),0) AS QTD_PEDIDOS_VALIDOS, CASE WHEN SUM(CASE WHEN D.DAV_SITUACAO IN (1,3) THEN 1 ELSE 0 END)>0 THEN SUM(CASE WHEN D.DAV_SITUACAO IN (1,3) THEN D.DAV_VALOR_LIQUIDO ELSE 0 END)/SUM(CASE WHEN D.DAV_SITUACAO IN (1,3) THEN 1 ELSE 0 END) ELSE 0 END AS TICKET_MEDIO, COALESCE(SUM(CASE WHEN D.DAV_SITUACAO=0 THEN 1 ELSE 0 END),0) AS QTD_PEDIDOS_PENDENTES, COALESCE(SUM(CASE WHEN D.DAV_SITUACAO=0 THEN D.DAV_VALOR_LIQUIDO ELSE 0 END),0) AS VALOR_PEDIDOS_PENDENTES FROM DAV D WHERE D.DAV_TIPO='PD' AND D.DAV_SITUACAO IN(0,1,3) AND CAST(D.DAV_DATA_EMISSAO AS DATE) BETWEEN ? AND ? {$where}";
+        $sql = "SELECT COALESCE(SUM(CASE WHEN D.DAV_SITUACAO IN (1,3) THEN D.DAV_VALOR_LIQUIDO ELSE 0 END),0) AS VENDAS_PERIODO, COALESCE(SUM(CASE WHEN D.DAV_SITUACAO IN (1,3) THEN 1 ELSE 0 END),0) AS QTD_PEDIDOS_VALIDOS, CASE WHEN SUM(CASE WHEN D.DAV_SITUACAO IN (1,3) THEN 1 ELSE 0 END)>0 THEN SUM(CASE WHEN D.DAV_SITUACAO IN (1,3) THEN D.DAV_VALOR_LIQUIDO ELSE 0 END)/SUM(CASE WHEN D.DAV_SITUACAO IN (1,3) THEN 1 ELSE 0 END) ELSE 0 END AS TICKET_MEDIO, COALESCE(SUM(CASE WHEN D.DAV_SITUACAO=1 AND COALESCE(D.DAV_SITUACAO_ENTREGA,0) IN (0,1) AND COALESCE(D.DSP_CODIGO,0)=0 THEN 1 ELSE 0 END),0) AS QTD_PEDIDOS_PENDENTES, COALESCE(SUM(CASE WHEN D.DAV_SITUACAO=1 AND COALESCE(D.DAV_SITUACAO_ENTREGA,0) IN (0,1) AND COALESCE(D.DSP_CODIGO,0)=0 THEN D.DAV_VALOR_LIQUIDO ELSE 0 END),0) AS VALOR_PEDIDOS_PENDENTES FROM DAV D WHERE D.DAV_TIPO='PD' AND D.DAV_SITUACAO IN(0,1,3) AND CAST(D.DAV_DATA_EMISSAO AS DATE) BETWEEN ? AND ? {$where}";
         $resultado = $this->primeiro($sql, array_merge([$filtros['data_inicial'], $filtros['data_final']], $bindings));
         $resultado->CLIENTES_ATENDIDOS = count($this->selecionar("SELECT D.PART_CODIGO FROM DAV D WHERE D.DAV_TIPO='PD' AND D.DAV_SITUACAO IN(1,3) AND D.PART_CODIGO IS NOT NULL AND CAST(D.DAV_DATA_EMISSAO AS DATE) BETWEEN ? AND ? {$where} GROUP BY D.PART_CODIGO", array_merge([$filtros['data_inicial'], $filtros['data_final']], $bindings)));
         return $resultado;
@@ -647,7 +820,8 @@ class DashboardService
                 'quantidade_exibida' => $titulosVencidos->count(),
             ],
             'pedidos_pendentes' => [
-                'formula' => "SUM(DAV_VALOR_LIQUIDO) WHERE DAV_SITUACAO = 0 AND DAV_TIPO = 'PD'",
+                'formula' => "SUM(DAV_VALOR_LIQUIDO) WHERE DAV_TIPO = 'PD' AND DAV_SITUACAO = 1 (Confirmado) AND DAV_SITUACAO_ENTREGA IN (0, 1) (entrega pendente ou parcial) AND DSP_CODIGO = 0 (sem situação personalizada)",
+                'regras' => ["DAV_TIPO = 'PD'", 'DAV_SITUACAO = 1 (Confirmado)', 'DAV_SITUACAO_ENTREGA IN (0, 1)', 'DSP_CODIGO = 0 (exclui FATURADO, TROCA, REPOSIÇÃO, AMOSTRA etc.)', 'DAV_DATA_EMISSAO entre data inicial e final'],
                 'filtros' => $filtrosAplicados,
                 'composicao' => ['quantidade' => (int) ($comercial->QTD_PEDIDOS_PENDENTES ?? 0), 'valor' => (float) ($comercial->VALOR_PEDIDOS_PENDENTES ?? 0)],
             ],

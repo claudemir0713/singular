@@ -49,7 +49,7 @@
 
         <!-- javascripts -->
         <script src="{{ asset('js/bootstrap-select.min.js') }}"></script>
-        <script src="{{ asset('js/scripts.js') }}"></script>
+        <script src="{{ asset('js/scripts.js') }}?v={{ filemtime(public_path('js/scripts.js')) }}"></script>
 
         <!-- nice scroll -->
         <script src="{{ asset('js/jquery.scrollTo.min.js') }}"></script>
@@ -71,13 +71,14 @@
     </head>
 
     <body>
+        <script>try{var _m=localStorage.getItem("menu_recolhido2");if(_m===null)_m=window.innerWidth<=768?"1":"0";if(_m==="1")document.body.classList.add("menu-recolhido");}catch(e){}</script>
         <!-- container section start -->
         <section id="container" class="">
             <input type="hidden" name="appurl" id="appurl" value="{{ url('/') }}" >
 
             <header class="header dark-bg">
                 <div class="toggle-nav">
-                    <div class="icon-reorder tooltips" data-original-title="Toggle Navigation" data-placement="bottom"><i class="icon_menu"></i></div>
+                    <div class="icon-reorder tooltips" data-original-title="Toggle Navigation" data-placement="bottom"><i class="fas fa-bars"></i></div>
                 </div>
                 <!--logo start-->
                     <a href="#" class="logo">
@@ -138,7 +139,40 @@
         </section>
 
 
-    </body>
+    <script>
+jQuery(function($){
+    function salvar(r){ try { localStorage.setItem('menu_recolhido2', r ? '1' : '0'); } catch(e) {} }
+    // dicas (tooltip) nos ícones quando a barra está reduzida
+    $('#sidebar .sidebar-menu > li > a').each(function(){
+        var t = $.trim($(this).find('.text').first().text());
+        if (t) $(this).attr('title', t);
+    });
+    var _ult = 0;
+    $(document).off('click.menu').on('click.menu', '.toggle-nav', function(e){
+        e.stopImmediatePropagation();
+        var agora = Date.now(); if (agora - _ult < 300) return; _ult = agora;
+        salvar(document.body.classList.toggle('menu-recolhido'));
+    });
+    // clicar num grupo de menu com a barra reduzida expande a barra para mostrar o submenu
+    $(document).on('click', 'body.menu-recolhido #sidebar .sub-menu > a', function(){
+        document.body.classList.remove('menu-recolhido');
+        salvar(false);
+    });
+    // neutraliza o ajuste automático do tema que escondia o menu em telas estreitas
+    function normalizar(){ $('#container,#main-content').removeClass('sidebar-closed'); $('#sidebar > ul').css('display',''); }
+    normalizar(); $(window).on('resize load', function(){ setTimeout(normalizar, 0); });
+    // ao voltar (botão voltar / cache de página) reaplica o estado salvo do menu
+    function reaplicar(){
+        var m = null;
+        try { m = localStorage.getItem('menu_recolhido2'); } catch(e) {}
+        if (m === null) m = window.innerWidth <= 768 ? '1' : '0';
+        document.body.classList.toggle('menu-recolhido', m === '1');
+        normalizar();
+    }
+    window.addEventListener('pageshow', function(){ reaplicar(); setTimeout(reaplicar, 50); });
+});
+</script>
+</body>
 
 </html>
 @include('layouts.modalSenha')

@@ -13,6 +13,9 @@
 
     <button class="btn btn-primary btn-sm" type="button" data-toggle="collapse" data-target="#collapseExample" aria-expanded="false" aria-controls="collapseExample">
         <span class="fas fa-filter font-12"></span> <span class="font-12">Filtros</span>
+    </button>
+    <button class="btn btn-info btn-sm" type="button" id="btn-imprimirComissao">
+        <span class="fas fa-print font-12"></span> <span class="font-12">PDF</span>
     </button><p>
     <div class="collapse" id="collapseExample">
         <div class="card card-body font-12">

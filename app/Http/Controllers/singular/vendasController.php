@@ -73,13 +73,18 @@ class vendasController extends Controller
         $papeleta->save();
     }
 
-    public function cargas_pdf($cargaId)
+    public function cargas_pdf(Request $request, $cargaId)
     {
         $carga      = [];
         $dav        = [];
+        $vendedor   = trim((string) $request->query('vendedor', ''));
 
         $papeleta   = papeleta::where('carga',$cargaId)->first();
-        $papeleta_dav = papeleta_dav::where('carga',$cargaId)->get();
+        $papeleta_dav = papeleta_dav::where('carga',$cargaId)
+            ->when($vendedor !== '', function ($q) use ($vendedor) {
+                $q->where('vendedor', 'like', '%' . $vendedor . '%');
+            })
+            ->get();
 
         foreach($papeleta_dav as $item){
             $dav_singular = DAV::where('DAV_NUMERO_AUXILIAR',$item->dav)->first();

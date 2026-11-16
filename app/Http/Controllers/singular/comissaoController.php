@@ -26,6 +26,45 @@ class comissaoController extends Controller
         return view('comissao.listAll',compact('comissoes','dateForm'));
     }
 
+    public function imprimirComissao(Request $request){
+        $nf         = $request->nf;
+        $dataI      = $request->dtI ?: date('Y-m-d');
+        $dataF      = $request->dtF ?: date('Y-m-d');
+        $vendedor   = strtoupper($request->vendedor);
+        $cliente    = strtoupper($request->cliente);
+
+        $comissoes = Comissao::comissao($dataI,$dataF,$cliente,$vendedor,$nf);
+
+        $mpdf = new \Mpdf\Mpdf([
+            'format'        => 'A4',
+            'margin_left'   => 10,
+            'margin_right'  => 10,
+            'margin_top'    => 20,
+            'margin_bottom' => 15,
+            'margin_header' => 5,
+            'margin_footer' => 5
+        ]);
+
+        $periodo = date('d/m/Y',strtotime($dataI)).' a '.date('d/m/Y',strtotime($dataF));
+        $cabecalho = '<table width="100%"><tr>';
+        $cabecalho .= '<td width="10%" align="center"><img src="'.asset('img/'.env('APP_NAME').'.png').'" height="30"></td>';
+        $cabecalho .= '<td width="90%" align="center"><span style="font-size:20px"><b>Comissões por emissão</b></span><br><span style="font-size:10px">Período: '.$periodo.'</span></td>';
+        $cabecalho .= '</tr></table><hr>';
+
+        $rodape = '<hr><table width="100%"><tr>';
+        $rodape .= '<td width="80%"></td>';
+        $rodape .= '<td width="20%" align="right"><span style="font-size:10px">Página {PAGENO} de {nb}</span></td>';
+        $rodape .= '</tr></table>';
+
+        $html = view('comissao.imprimePdfComissao', compact('comissoes'))->render();
+        $mpdf->SetHTMLHeader($cabecalho);
+        $mpdf->SetHTMLFooter($rodape);
+        $mpdf->AddPage('P');
+        $mpdf->WriteHTML($html);
+        $mpdf->Output('Comissao_emissao.pdf', 'I');
+        exit();
+    }
+
     public function alteraBase(Request $request)
     {
         $return = 'success';

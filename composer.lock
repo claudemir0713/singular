@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "4fdbdc1b820f1c3f538b6eb45f7e1883",
+    "content-hash": "f211c455cafd5d7e8b45ca80e59726ab",
     "packages": [
         {
             "name": "brick/math",
@@ -1060,6 +1060,57 @@
                 }
             ],
             "time": "2026-08-24T09:15:32+00:00"
+        },
+        {
+            "name": "harrygulliford/laravel-firebird",
+            "version": "v4.0.0-beta.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/harrygulliford/laravel-firebird.git",
+                "reference": "1736bb88c28ea2ffd34216261647e368678888c2"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/harrygulliford/laravel-firebird/zipball/1736bb88c28ea2ffd34216261647e368678888c2",
+                "reference": "1736bb88c28ea2ffd34216261647e368678888c2",
+                "shasum": ""
+            },
+            "require": {
+                "illuminate/container": "^12.17|^13.0",
+                "illuminate/database": "^12.17|^13.0",
+                "illuminate/events": "^12.17|^13.0",
+                "illuminate/support": "^12.17|^13.0",
+                "php": "^8.2"
+            },
+            "require-dev": {
+                "fakerphp/faker": "^1.24",
+                "mockery/mockery": "^1.6",
+                "orchestra/testbench": "^10.3|^11.0",
+                "phpunit/phpunit": "^11.5|^12.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "HarryGulliford\\Firebird\\FirebirdServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "HarryGulliford\\Firebird\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "description": "Firebird database driver for the Laravel Framework",
+            "support": {
+                "issues": "https://github.com/harrygulliford/laravel-firebird/issues",
+                "source": "https://github.com/harrygulliford/laravel-firebird/tree/v4.0.0-beta.1"
+            },
+            "time": "2026-08-08T03:35:28+00:00"
         },
         {
             "name": "laravel/framework",

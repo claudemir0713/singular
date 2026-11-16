@@ -31,6 +31,7 @@ Route::group(['middleware' => ['auth']], function () {
     Route::group(['namespace' => 'dashboard'], function () {
         Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard.index');
         Route::get('dashboard/dados', [DashboardController::class, 'dados'])->name('dashboard.dados');
+        Route::get('dashboard/detalhe', [DashboardController::class, 'detalhe'])->name('dashboard.detalhe');
     });
 
     /********************************** menu ***************************************************************/
@@ -79,6 +80,7 @@ Route::group(['middleware' => ['auth']], function () {
     /********************************** comissao ***************************************************************/
     Route::group(['namespace' => 'comissao'], function () {
         Route::get('comissao', [comissaoController::class, 'listAll'])->name('comissao.listAll');
+        Route::get('comissao/imprimirComissao', [comissaoController::class, 'imprimirComissao'])->name('comissao.imprimirComissao');
         Route::post('comissao/alteraBase', [comissaoController::class, 'alteraBase'])->name('comissao.alteraBase');
         Route::get('comissao/comissaoPagar', [comissaoController::class, 'comissaoPagar'])->name('comissao.comissaoPagar');
         Route::get('comissao/imprimirComissaoPagar', [comissaoController::class, 'imprimirComissaoPagar'])->name('receber.imprimirComissaoPagar');

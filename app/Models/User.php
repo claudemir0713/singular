@@ -50,6 +50,27 @@ class User extends Authenticatable
         return $this->belongsToMany(menu::class, 'menu_usuario', 'usuarioId', 'menuId')->orderBy('menu.ordem', );
     }
 
+    public static function iconeGrupo($item): string
+    {
+        if (!empty($item->icone)) return $item->icone;
+        $mapa = [
+            'cadastro' => 'fas fa-folder-open',
+            'comercial' => 'fas fa-shopping-cart',
+            'financeiro' => 'fas fa-coins',
+            'contabil' => 'fas fa-calculator',
+            'produc' => 'fas fa-industry',
+            'fin.rec' => 'fas fa-hand-holding-usd',
+            'fin.pagar' => 'fas fa-file-invoice-dollar',
+            'fin.caixa' => 'fas fa-cash-register',
+            'totvs comercial' => 'fas fa-store',
+        ];
+        $d = mb_strtolower(\Illuminate\Support\Str::ascii($item->descricao));
+        foreach ($mapa as $k => $ic) {
+            if (str_contains($d, $k) && !($k === 'comercial' && str_contains($d, 'totvs')) && !($k === 'financeiro' && str_contains($d, 'totvs'))) return $ic;
+        }
+        return 'fas fa-layer-group';
+    }
+
     public static function montarMenu()
     {
         $menu = '';
@@ -68,7 +89,7 @@ class User extends Authenticatable
                         if($item->tipo=='Título' && $finalT==0){
                             $menu.=' <li class="sub-menu">';
                                 $menu.='<a href="javascript:;" class="">';
-                                    $menu.='<i class="fa fa-angle-double-down"></i>';
+                                    $menu.='<i class="'.self::iconeGrupo($item).'"></i>';
                                     $menu.='<span class="text">'.$item->descricao.'</span>';
                                     $menu.='<span class="menu-arrow arrow_carrot-right"></span>';
                                 $menu.='</a>';
@@ -78,7 +99,7 @@ class User extends Authenticatable
                             $menu.='</li>';
                             $menu.=' <li class="sub-menu">';
                                 $menu.='<a href="javascript:;" class="">';
-                                    $menu.='<i class="fa fa-angle-double-down"></i>';
+                                    $menu.='<i class="'.self::iconeGrupo($item).'"></i>';
                                     $menu.='<span class="text">'.$item->descricao.'</span>';
                                     $menu.='<span class="menu-arrow arrow_carrot-right"></span>';
                                 $menu.='</a>';

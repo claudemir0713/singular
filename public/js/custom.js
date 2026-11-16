@@ -291,6 +291,17 @@ jQuery(function ($) {
         window.open(route, '_blank');
     });
     /**************************imprimir contas a receber************************************/
+    $(document).on('click', '#btn-imprimirComissao', function () {
+        const params = $.param({
+            dtI: $('#dtI').val() || '',
+            dtF: $('#dtF').val() || '',
+            cliente: $('#cliente').val() || '',
+            vendedor: $('#vendedor').val() || '',
+            nf: $('#nf').val() || ''
+        });
+        window.open(url + '/comissao/imprimirComissao?' + params, '_blank');
+    })
+
     $(document).on('click', '#btn-imprimirComissaoPagar', function () {
         let dataI = ($(document).find('#dtI').val()) ? $(document).find('#dtI').val() : ''
         let dataF = ($(document).find('#dtF').val()) ? $(document).find('#dtF').val() : ''
@@ -353,6 +364,14 @@ jQuery(function ($) {
             if (carga) dadosPapeleta(carga);
         }
     })
+    // Monta a URL do PDF no clique, incluindo carga e filtro de vendedor atuais
+    $(document).on('click', '#btnPdf', function () {
+        const carga = $("#carga").val().trim();
+        const vendedor = $("#vendedor").val().trim();
+        let novaUrl = `${url}/vendas/cargas_pdf/${encodeURIComponent(carga || 0)}`;
+        if (vendedor) novaUrl += `?vendedor=${encodeURIComponent(vendedor)}`;
+        $(this).attr("href", novaUrl);
+    });
     $(document).on('blur keyup', '#vendedor', function () {
         const carga = $("#carga").val().trim();
 

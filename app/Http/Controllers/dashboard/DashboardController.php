@@ -41,6 +41,23 @@ class DashboardController extends Controller
         }
     }
 
+    public function detalhe(Request $request)
+    {
+        $card = (string) $request->input('card');
+        $usuario = Auth::user();
+        if ($this->usuarioRestrito($usuario) && in_array($card, ['pagar', 'prev_pagar', 'saldo'], true)) {
+            return response()->json(['success' => false, 'message' => 'Sem permissão para este card.'], 403);
+        }
+        try {
+            return response()->json(['success' => true, 'detalhe' => $this->dashboardService->obterDetalheCard($card, $this->montarFiltros($request, $usuario))]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            report($e);
+            return response()->json(['success' => false, 'message' => 'Não foi possível carregar a auditoria do card.'], 500);
+        }
+    }
+
     protected function montarFiltros(Request $request, $usuario)
     {
         $hoje = Carbon::today();

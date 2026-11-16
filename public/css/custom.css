@@ -249,3 +249,25 @@ table tfoot tr td {
     font-size: 10px;
     box-sizing: border-box;
 }
+
+/* Menu lateral: expandido (180px) ou barra reduzida só com ícones (56px) */
+.toggle-nav .icon-reorder{color:#fff;font-size:20px;padding:0 6px}
+.toggle-nav .icon-reorder:hover{color:#08b8b5}
+#sidebar,#main-content{transition:width .2s ease,margin-left .2s ease}
+body #sidebar{width:180px !important;margin-left:0 !important}
+body #sidebar > ul,body #sidebar .sidebar-menu{display:block !important}
+body #main-content{margin-left:180px !important}
+body.menu-recolhido #sidebar{width:56px !important;overflow:hidden}
+body.menu-recolhido #main-content{margin-left:56px !important}
+body.menu-recolhido #sidebar .sidebar-menu .text,
+body.menu-recolhido #sidebar .sidebar-menu .menu-arrow,
+body.menu-recolhido #sidebar .sidebar-menu ul.sub{display:none !important}
+body.menu-recolhido #sidebar .sidebar-menu > li > a{padding:15px 0;text-align:center}
+body.menu-recolhido #sidebar .sidebar-menu > li > a i{padding-right:0;font-size:20px}
+/* barra reduzida: ao passar o mouse expande sobrepondo o conteúdo, mostrando os nomes */
+body.menu-recolhido #sidebar:hover{width:180px !important;overflow:visible;position:fixed;z-index:1000;box-shadow:4px 0 12px rgba(0,0,0,.25)}
+body.menu-recolhido #sidebar:hover .sidebar-menu .text{display:inline !important}
+body.menu-recolhido #sidebar:hover .sidebar-menu > li > a{text-align:left;padding:15px 0 15px 15px}
+body.menu-recolhido #sidebar:hover .sidebar-menu > li > a i{padding-right:10px;font-size:16px}
+body.menu-recolhido #sidebar:hover .sidebar-menu li.sub-menu.active > ul.sub,
+body.menu-recolhido #sidebar:hover .sidebar-menu li.sub-menu > ul.sub[style*="block"]{display:block !important}
