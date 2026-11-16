@@ -143,11 +143,18 @@
 
     /* ---------------------------------------------------------- eventos */
     $(function () {
+        // padrao da tela: ultimos 15 dias (menos itens); "Limpar" volta para ele
+        function periodoPadrao() {
+            var hoje = new Date(), ini = new Date();
+            ini.setDate(ini.getDate() - 15);
+            $('#fDe').val(iso(ini)); $('#fAte').val(iso(hoje));
+        }
+        periodoPadrao();
         carregarStatus();
         carregar(1);
 
         $('#formFiltro').on('submit', function () { selecionadas = {}; carregar(1); return false; });
-        $('#btnLimpar').on('click', function () { $('#fDe,#fAte,#fBusca').val(''); $('#fSituacao').val(''); selecionadas = {}; carregar(1); });
+        $('#btnLimpar').on('click', function () { $('#fBusca').val(''); $('#fSituacao').val(''); periodoPadrao(); selecionadas = {}; carregar(1); });
         $('#paginacao').on('click', 'a', function (e) { e.preventDefault(); var p = parseInt($(this).data('p'), 10); if (p) { carregar(p); } });
 
         $('#corpoNfe').on('change', '.chk', function () {
