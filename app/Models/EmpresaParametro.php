@@ -28,5 +28,6 @@ class EmpresaParametro extends Model
         'cbs',
         'ibs_cbs_credito',
         'ibs_cbs_ano',
+        'ibs_cbs_transicao',
     ];
 }

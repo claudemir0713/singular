@@ -150,6 +150,12 @@ class formacaoPrecoItem extends Model
         'ibs_cbs_credito',
         'ibs_cbs_ano',
         'valor_credito_ibs_cbs',
+        'cbs_referencia',
+        'ibs_referencia',
+        'cbs_entrada',
+        'ibs_entrada',
+        'icms_saida',
+        'pis_cofins_saida',
 
         /*
          * Preço final.
@@ -296,6 +302,12 @@ class formacaoPrecoItem extends Model
         'ibs_cbs_credito' => 'decimal:6',
         'ibs_cbs_ano' => 'integer',
         'valor_credito_ibs_cbs' => 'decimal:6',
+        'cbs_referencia' => 'decimal:6',
+        'ibs_referencia' => 'decimal:6',
+        'cbs_entrada' => 'decimal:6',
+        'ibs_entrada' => 'decimal:6',
+        'icms_saida' => 'decimal:6',
+        'pis_cofins_saida' => 'decimal:6',
 
         /*
          * Valores calculados.

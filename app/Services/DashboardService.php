@@ -113,11 +113,14 @@ class DashboardService
                     $l->PAGO = $cred ? 0 : (float) $l->CON_VALOR_TOTAL_PAGO;
                     $l->DESCONTO = $cred ? 0 : (float) $l->CON_VALOR_DESCONTO;
                     $l->OUTRAS = $cred ? 0 : (float) $l->CON_VALOR_OUTRASDESPESAS;
-                    $l->CREDITO = $cred ? (float) $l->CON_VALOR_CORRIGIDO : 0;
-                    $l->VALOR = $l->ORIGINAL - $l->PAGO - $l->CREDITO - $l->DESCONTO + $l->OUTRAS;
+                    // Crédito: exibe o já consumido e o saldo restante (negativo), sem contar duas vezes.
+                    $l->CREDITO = $cred ? (float) $l->CON_VALOR_TOTAL_PAGO : 0;
+                    $l->VALOR = $cred
+                        ? -(float) $l->CON_VALOR_CORRIGIDO
+                        : $l->ORIGINAL - $l->PAGO - $l->DESCONTO + $l->OUTRAS;
                 });
                 $colunas = array_merge($colunasTitulo, [$moeda('ORIGINAL', 'Original'), $moeda('PAGO', 'Pago'), $moeda('DESCONTO', 'Desconto'), $moeda('OUTRAS', 'Outras desp.'), $moeda('CREDITO', 'Crédito'), $moeda('VALOR', 'Valor no card')]);
-                $nota = 'Valor no card = original − pago − desconto + outras despesas − crédito (sem juros e multas).';
+                $nota = 'Valor no card = original − pago − desconto + outras despesas (sem juros e multas). Crédito: valor negativo = saldo restante; coluna Crédito = parte já consumida.';
                 break;
 
             case 'pagar':
@@ -430,11 +433,11 @@ class DashboardService
         $previsaoReceber = $this->obterResumoPrevisao($filtros, 0);
         $previsaoPagar = $this->obterResumoPrevisao($filtros, 1);
 
-        $totalDuplicatasSemEncargos = (float) ($duplicatas->VALOR_ORIGINAL ?? 0)
-            - (float) ($duplicatas->VALOR_PAGO ?? 0)
-            - (float) ($duplicatas->CREDITOS ?? 0)
-            - (float) ($duplicatas->VALOR_DESCONTO ?? 0)
-            + (float) ($duplicatas->VALOR_OUTRAS_DESPESAS ?? 0);
+        // TOTAL já é o saldo assinado (créditos negativos, já líquidos do que foi consumido).
+        // Sem encargos = saldo − juros − multa. Não subtrair CREDITOS de novo (dupla contagem).
+        $totalDuplicatasSemEncargos = (float) ($duplicatas->TOTAL ?? 0)
+            - (float) ($duplicatas->VALOR_JUROS ?? 0)
+            - (float) ($duplicatas->VALOR_MULTA ?? 0);
         $totalChequesSemEncargos = (float) ($cheques->TOTAL ?? 0);
         $totalReceberSemEncargos = $totalDuplicatasSemEncargos + $totalChequesSemEncargos;
 

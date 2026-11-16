@@ -396,6 +396,11 @@
                         <i class="fas fa-list-alt"></i>
                         Ver memória de cálculo
                     </button>
+                    <button type="button" class="btn btn-secondary btn-sm fonte-10" id="btn_ver_dre"
+                        data-url="{{ route('formacaoPreco.dre') }}">
+                        <i class="fas fa-file-invoice-dollar"></i>
+                        DRE
+                    </button>
                 </div>
             </div>
 
@@ -556,6 +561,7 @@
         @include('formacaoPreco.modalEstruturaProduto')
         @include('formacaoPreco.modalHistoricoCustos')
         @include('formacaoPreco.modalMemoriaCalculo')
+        @include('formacaoPreco.modalDre')
 
     </div>
 

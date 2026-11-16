@@ -41,7 +41,7 @@ class FormacaoPrecoController extends Controller
             $parametro->{$c} = $parametro->{$c} ?? 0;
         }
 
-        $regraTransicao = app(FormacaoPrecoService::class)->regraTransicaoTributaria();
+        $regraTransicao = app(FormacaoPrecoService::class)->regraTransicaoTributaria($parametro->ibs_cbs_transicao ?? null);
 
         return view('formacaoPreco.formacaoPreco', compact('parametro', 'regraTransicao'));
     }
@@ -770,6 +770,13 @@ class FormacaoPrecoController extends Controller
                     'ibs_cbs_credito' => $this->normalizarDecimal($request->get('ibs_cbs_credito')),
                     'ibs_cbs_ano' => (int) $request->get('ibs_cbs_ano') ?: null,
                     'valor_credito_ibs_cbs' => $this->normalizarDecimal($request->get('valor_credito_ibs_cbs')),
+                    // Foto da transição usada (alíquota cheia, % de entrada/saída do ano): auditoria da DRE e da memória
+                    'cbs_referencia' => $this->normalizarDecimal($request->get('cbs_referencia')),
+                    'ibs_referencia' => $this->normalizarDecimal($request->get('ibs_referencia')),
+                    'cbs_entrada' => $this->normalizarDecimal($request->get('cbs_entrada')),
+                    'ibs_entrada' => $this->normalizarDecimal($request->get('ibs_entrada')),
+                    'icms_saida' => $this->normalizarDecimal($request->get('icms_saida')),
+                    'pis_cofins_saida' => $this->normalizarDecimal($request->get('pis_cofins_saida')),
 
                     /*
                     * Valores calculados.
@@ -899,6 +906,23 @@ class FormacaoPrecoController extends Controller
         return is_numeric($valor) ? $valor : 0;
     }
 
+    /**
+     * DRE da venda (simulação ou formação salva): a tela envia preço, custos e parâmetros efetivos e recebe as linhas.
+     */
+    public function dre(Request $request, FormacaoPrecoService $service)
+    {
+        $campos = ['preco', 'custo_materiais', 'custo_moi', 'custo_moe', 'vl_frete', 'prazo', 'taxa_financeira', 'comissao',
+            'frete_percentual', 'despesa_fixa', 'outros', 'difal', 'ir_csll', 'icms', 'simples', 'pis', 'cofins', 'cbs', 'ibs',
+            'cbs_ref', 'ibs_ref', 'cbs_entra', 'ibs_entra', 'ibs_cbs_credito', 'fator_unid', 'ano'];
+        $dados = [];
+        foreach ($campos as $c) {
+            $dados[$c] = (float) $request->input($c, 0);
+        }
+        $dados['unidade'] = (string) $request->input('unidade', '');
+
+        return response()->json($service->calcularDre($dados));
+    }
+
     public function gravarParametrosPadrao(Request $request)
     {
         try {
@@ -926,6 +950,15 @@ class FormacaoPrecoController extends Controller
             $parametro->cbs = $this->normalizarDecimal($request->get('md_parametro_cbs'));
             $parametro->ibs_cbs_credito = min(100, max(0, (float) $this->normalizarDecimal($request->get('md_parametro_ibs_cbs_credito'))));
             $parametro->ibs_cbs_ano = (int) $request->get('md_parametro_ibs_cbs_ano') ?: null;
+
+            // Tabela de transição editável: md_tr[ano][cbs_entra|ibs_entra|icms_sai|pis_cofins_sai], em %
+            $transicao = [];
+            foreach ((array) $request->get('md_tr', []) as $ano => $campos) {
+                foreach (['cbs_entra', 'ibs_entra', 'icms_sai', 'pis_cofins_sai'] as $c) {
+                    $transicao[(int) $ano][$c] = min(100, max(0, (float) $this->normalizarDecimal($campos[$c] ?? 0)));
+                }
+            }
+            $parametro->ibs_cbs_transicao = $transicao ? json_encode($transicao) : null;
 
             $parametro->save();
 

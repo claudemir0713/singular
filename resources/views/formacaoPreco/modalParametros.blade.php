@@ -106,8 +106,8 @@ HTML;
                                 <thead class="thead-light">
                                     <tr>
                                         <th>No ano <span id="md_rt_ano_label"></span></th>
-                                        <th class="text-right">CBS no preço</th>
-                                        <th class="text-right">IBS no preço</th>
+                                        <th class="text-right">CBS efetiva (por fora)</th>
+                                        <th class="text-right">IBS efetivo (por fora)</th>
                                         <th class="text-right">Total IBS+CBS</th>
                                         <th class="text-right">ICMS aplicado</th>
                                         <th class="text-right">PIS+COFINS aplicado</th>
@@ -124,9 +124,41 @@ HTML;
                                     </tr>
                                 </tbody>
                             </table>
+
+                            <div class="negrito mb-1">Transição por ano <small class="text-muted">(editável — alíquota efetiva = alíquota de referência × % de entrada)</small></div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered rt-resumo mb-2" id="md_tr_tabela">
+                                    <thead class="thead-light">
+                                        <tr>
+                                            <th>Ano</th>
+                                            <th>Fase</th>
+                                            <th class="text-right">% CBS que entra</th>
+                                            <th class="text-right">% IBS que entra</th>
+                                            <th class="text-right">% ICMS que sai</th>
+                                            <th class="text-right">% PIS/COFINS que sai</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (($regraTransicao['anos'] ?? []) as $linhaTr)
+                                            <tr data-ano="{{ $linhaTr['ano'] }}" title="{{ $linhaTr['texto'] }}">
+                                                <td class="negrito">{{ $linhaTr['ano'] }}</td>
+                                                <td>{{ $linhaTr['fase'] }}</td>
+                                                @foreach (['cbs_entra', 'ibs_entra', 'icms_sai', 'pis_cofins_sai'] as $campoTr)
+                                                    <td style="width:110px">
+                                                        <input type="text" class="form-control form-control-sm alinhaDireita atualiza_md_parametro md-tr-input fonte-10"
+                                                            name="md_tr[{{ $linhaTr['ano'] }}][{{ $campoTr }}]" data-ano="{{ $linhaTr['ano'] }}" data-campo="{{ $campoTr }}"
+                                                            value="{{ number_format((float) $linhaTr[$campoTr], 2, ',', '.') }}" inputmode="decimal" autocomplete="off">
+                                                    </td>
+                                                @endforeach
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
                             <small class="form-text text-muted mb-2">
-                                Base legal: EC 132/2023 e LC 214/2025. As alíquotas de referência são editáveis porque dependem de resolução do Senado.
-                                Com IBS/CBS zerados o cálculo permanece igual ao anterior.
+                                Valores iniciais sugeridos pela regra vigente (EC 132/2023, LC 214/2025); todos editáveis e gravados com "Gravar padrão".
+                                As alíquotas de teste de 2026 (CBS 0,9% / IBS 0,1%) são compensadas e não oneram o preço (entrada 0%).
+                                Com IBS/CBS ou os percentuais em zero, o cálculo permanece igual ao anterior.
                             </small>
                         </div>
                     </div>

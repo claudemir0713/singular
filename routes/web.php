@@ -151,6 +151,7 @@ Route::group(['middleware' => ['auth']], function () {
         Route::get('formacaoPreco/formacaoPreco', [FormacaoPrecoController::class, 'formacaoPreco'])->name('formacaoPreco.formacaoPreco');
         Route::get('formacaoPreco/buscar-custo-produto', [FormacaoPrecoController::class, 'buscarCustoProduto'])->name('formacaoPreco.buscarCustoProduto');
         Route::get('formacaoPreco/historico-custos', [FormacaoPrecoController::class, 'historicoCustos'])->name('formacaoPreco.historicoCustos');
+        Route::post('formacaoPreco/dre', [FormacaoPrecoController::class, 'dre'])->name('formacaoPreco.dre');
         Route::post('formacaoPreco/salvar', [FormacaoPrecoController::class, 'salvarFormacaoPreco'])->name('formacaoPreco.salvar');
         Route::post('formacaoPreco/gravar-parametros-padrao', [FormacaoPrecoController::class, 'gravarParametrosPadrao'])->name('formacaoPreco.gravarParametrosPadrao');
     });

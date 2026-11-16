@@ -169,6 +169,8 @@ function configurarEventosFormaCalculo() {
 }
 
 function configurarEventosParametros() {
+    configurarEventosDre();
+
     $(document).off('show.bs.modal.formacaoParametros', '#ModalParamentros');
     $(document).on('show.bs.modal.formacaoParametros', '#ModalParamentros', function () {
         carregarModalParametros();
@@ -678,7 +680,7 @@ function limparDadosProduto() {
  * Reforma tributária (EC 132/2023, LC 214/2025): linha da transição para o ano.
  * A tabela vem do FormacaoPrecoService::regraTransicaoTributaria() (JSON na view).
  */
-function regraTransicaoDoAno(ano) {
+function regraTransicaoDoAno(ano, tabela) {
     if (!window.regraTransicaoTributaria) {
         try {
             window.regraTransicaoTributaria = JSON.parse($('#regra_transicao_tributaria').text());
@@ -687,12 +689,12 @@ function regraTransicaoDoAno(ano) {
         }
     }
 
-    var regra = window.regraTransicaoTributaria;
+    // "tabela" permite simular com a tabela digitada no modal, ainda não aplicada
+    var regra = tabela || window.regraTransicaoTributaria;
 
     if (!regra || !regra.anos || !regra.anos.length) {
         return {
-            ano: ano, fase: 'Sem reforma', cbs_modo: 'nenhum', ibs_modo: 'nenhum', cbs_teste: 0, ibs_teste: 0,
-            ibs_fator: 0, icms_fator: 1, pis_cofins_fator: 1, texto: ''
+            ano: ano, fase: 'Sem reforma', cbs_entra: 0, ibs_entra: 0, icms_sai: 0, pis_cofins_sai: 0, texto: ''
         };
     }
 
@@ -732,20 +734,20 @@ function tributosVendaReforma(custoMateriais, p) {
 
     var anoInformado = p.ano !== undefined ? p.ano : $('#parametro_ibs_cbs_ano').val();
     var ano = parseInt(anoInformado, 10) || (new Date()).getFullYear();
-    var regra = regraTransicaoDoAno(ano);
+    var regra = regraTransicaoDoAno(ano, p.tabela);
 
     var cbsRef = campo('cbs', '#parametro_cbs');
     var ibsRef = campo('ibs', '#parametro_ibs');
     var creditoPct = Math.min(100, Math.max(0, campo('credito', '#parametro_ibs_cbs_credito')));
 
-    // Em "teste" (2026; IBS em 2027-2028) a alíquota é compensada: não onera o preço.
-    var cbs = regra.cbs_modo === 'cheia' ? cbsRef : 0;
-    var ibs = (regra.ibs_modo === 'cheia' || regra.ibs_modo === 'parcial') ? ibsRef * regra.ibs_fator : 0;
+    // Alíquota efetiva = alíquota cheia de referência × % de entrada do ano (todos editáveis em Parâmetros).
+    var cbs = cbsRef * regra.cbs_entra / 100;
+    var ibs = ibsRef * regra.ibs_entra / 100;
     var total = cbs + ibs;
 
-    var icms = campo('icms', '#parametro_icms') * regra.icms_fator;
-    var pis = campo('pis', '#parametro_pis') * regra.pis_cofins_fator;
-    var cofins = campo('cofins', '#parametro_cofins') * regra.pis_cofins_fator;
+    var icms = campo('icms', '#parametro_icms') * (1 - regra.icms_sai / 100);
+    var pis = campo('pis', '#parametro_pis') * (1 - regra.pis_cofins_sai / 100);
+    var cofins = campo('cofins', '#parametro_cofins') * (1 - regra.pis_cofins_sai / 100);
     var simples = campo('simples', '#parametro_simples');
 
     return {
@@ -753,6 +755,8 @@ function tributosVendaReforma(custoMateriais, p) {
         regra: regra,
         cbs: cbs,
         ibs: ibs,
+        cbsRef: cbsRef,
+        ibsRef: ibsRef,
         totalIbsCbs: total,
         icms: icms,
         pis: pis,
@@ -767,13 +771,28 @@ function tributosVendaReforma(custoMateriais, p) {
 }
 
 function descricaoModoReforma(t) {
-    var r = t.regra;
+    return 'cheia ' + formatPercentNumber(t.cbsRef) + '% × entrada ' + formatPercentNumber(t.regra.cbs_entra) + '%';
+}
 
-    if (r.cbs_modo === 'teste') {
-        return 'teste ' + formatPercentNumber(r.cbs_teste) + '% (não onera)';
-    }
+/** Tabela de transição editada no modal (cópia da vigente com os % digitados). */
+function lerTabelaTransicaoModal() {
+    var base = regraTransicaoDoAno(0) && window.regraTransicaoTributaria
+        ? JSON.parse(JSON.stringify(window.regraTransicaoTributaria))
+        : { antes: { ano: 2025, fase: 'Sem reforma', cbs_entra: 0, ibs_entra: 0, icms_sai: 0, pis_cofins_sai: 0, texto: '' }, anos: [] };
 
-    return r.cbs_modo === 'cheia' ? 'plena' : '—';
+    $('#md_tr_tabela .md-tr-input').each(function () {
+        var ano = parseInt($(this).data('ano'), 10);
+        var campo = $(this).data('campo');
+        var valor = Math.min(100, Math.max(0, parseBRNumber($(this).val())));
+
+        for (var i = 0; i < base.anos.length; i++) {
+            if (base.anos[i].ano === ano) {
+                base.anos[i][campo] = valor;
+            }
+        }
+    });
+
+    return base;
 }
 
 /** Mostra no modal o que vale para o ano escolhido, com os valores digitados (ainda não aplicados). */
@@ -786,7 +805,8 @@ function atualizarInfoReformaModal() {
         icms: $('#md_parametro_icms').val(),
         pis: $('#md_parametro_pis').val(),
         cofins: $('#md_parametro_cofins').val(),
-        simples: $('#md_parametro_simples').val()
+        simples: $('#md_parametro_simples').val(),
+        tabela: lerTabelaTransicaoModal()
     });
     var r = t.regra;
 
@@ -794,14 +814,16 @@ function atualizarInfoReformaModal() {
     $('#md_rt_ano_label').text(t.ano);
     $('#md_rt_texto').text(r.texto || 'Reforma tributária ainda não vigente neste ano.');
 
-    $('#md_rt_cbs').text(formatPercentNumber(t.cbs) + '%');
-    $('#md_rt_ibs').text(formatPercentNumber(t.ibs) + '%');
+    $('#md_tr_tabela tbody tr').removeClass('table-info').filter('[data-ano="' + t.ano + '"]').addClass('table-info');
+
+    $('#md_rt_cbs').text(formatPercentNumber(t.cbs) + '% = ' + formatPercentNumber(t.cbsRef) + '% × ' + formatPercentNumber(r.cbs_entra) + '%');
+    $('#md_rt_ibs').text(formatPercentNumber(t.ibs) + '% = ' + formatPercentNumber(t.ibsRef) + '% × ' + formatPercentNumber(r.ibs_entra) + '%');
     $('#md_rt_total').text(formatPercentNumber(t.totalIbsCbs) + '%');
     $('#md_rt_icms').text(formatPercentNumber(t.icms) + '%');
     $('#md_rt_piscofins').text(formatPercentNumber(t.pis + t.cofins) + '%');
 
-    $('#md_aviso_pis_cofins').toggleClass('d-none', r.pis_cofins_fator >= 1);
-    $('#md_aviso_icms').toggleClass('d-none', r.icms_fator >= 1);
+    $('#md_aviso_pis_cofins').toggleClass('d-none', !(r.pis_cofins_sai > 0));
+    $('#md_aviso_icms').toggleClass('d-none', !(r.icms_sai > 0));
 }
 
 function carregarModalParametros() {
@@ -809,7 +831,17 @@ function carregarModalParametros() {
     $('#md_parametro_cbs').val($('#parametro_cbs').val());
     $('#md_parametro_ibs_cbs_credito').val($('#parametro_ibs_cbs_credito').val());
     $('#md_parametro_ibs_cbs_ano').val($('#parametro_ibs_cbs_ano').val());
-    atualizarInfoReformaModal();
+
+    // tabela de transição vigente (descarta edições não aplicadas de uma abertura anterior)
+    regraTransicaoDoAno(0);
+    if (window.regraTransicaoTributaria) {
+        $.each(window.regraTransicaoTributaria.anos, function (i, linha) {
+            $.each(['cbs_entra', 'ibs_entra', 'icms_sai', 'pis_cofins_sai'], function (j, campo) {
+                $('#md_tr_tabela .md-tr-input[data-ano="' + linha.ano + '"][data-campo="' + campo + '"]')
+                    .val(formatPercentNumber(linha[campo]));
+            });
+        });
+    }
 
     $('#md_margem').val($('#margem').val());
     $('#md_comissao').val($('#comissao').val());
@@ -824,6 +856,8 @@ function carregarModalParametros() {
     $('#md_parametro_frete_percentual').val($('#parametro_frete_percentual').val());
     $('#md_parametro_despesa_fixa').val($('#parametro_despesa_fixa').val());
     $('#md_parametro_outros').val($('#parametro_outros').val());
+
+    atualizarInfoReformaModal();
 }
 
 function aplicarModalParametros() {
@@ -831,6 +865,7 @@ function aplicarModalParametros() {
     $('#parametro_cbs').val($('#md_parametro_cbs').val());
     $('#parametro_ibs_cbs_credito').val($('#md_parametro_ibs_cbs_credito').val());
     $('#parametro_ibs_cbs_ano').val($('#md_parametro_ibs_cbs_ano').val());
+    window.regraTransicaoTributaria = lerTabelaTransicaoModal();
 
     $('#margem').val($('#md_margem').val());
     $('#comissao').val($('#md_comissao').val());
@@ -1266,6 +1301,131 @@ function atualizarCardValorFinal(precoVenda, info) {
     }
 }
 
+/**
+ * DRE da venda. O cálculo é feito pelo FormacaoPrecoService::calcularDre() (única fonte); aqui só se monta o
+ * pedido com os valores efetivos da tela (simulação ou formação carregada) e se confere o fechamento com os cards.
+ */
+function abrirDre() {
+    atualizarPrecoVenda();
+
+    var precoVenda = parseBRNumber($('#preco_venda_calculado').val());
+    var trib = tributosVendaReforma(lerCusto('#custo_materiais'));
+    var info = window.custoPecaInfo || {};
+    var unidade = (info.unidade || '').toUpperCase();
+    var temUnidade = temFatorUnidade(info.fator) && (unidade === 'M2' || unidade === 'M3');
+
+    var dados = {
+        _token: $('input[name="_token"]').val(),
+        preco: precoVenda,
+        custo_materiais: lerCusto('#custo_materiais'),
+        custo_moi: lerCusto('#custo_moi'),
+        custo_moe: lerCusto('#custo_moe'),
+        vl_frete: lerCusto('#vl_frete'),
+        prazo: parseBRNumber($('#prazo').val()),
+        taxa_financeira: parseBRNumber($('#parametro_taxa_financeira').val()),
+        comissao: parseBRNumber($('#comissao').val()),
+        frete_percentual: parseBRNumber($('#parametro_frete_percentual').val()),
+        despesa_fixa: parseBRNumber($('#parametro_despesa_fixa').val()),
+        outros: parseBRNumber($('#parametro_outros').val()),
+        difal: parseBRNumber($('#parametro_difal').val()),
+        ir_csll: parseBRNumber($('#parametro_ir_csll').val()),
+        icms: trib.icms,
+        simples: trib.simples,
+        pis: trib.pis,
+        cofins: trib.cofins,
+        cbs: trib.cbs,
+        ibs: trib.ibs,
+        cbs_ref: trib.cbsRef,
+        ibs_ref: trib.ibsRef,
+        cbs_entra: trib.regra.cbs_entra,
+        ibs_entra: trib.regra.ibs_entra,
+        ibs_cbs_credito: trib.creditoPct,
+        fator_unid: temUnidade ? info.fator : 1,
+        ano: trib.ano,
+        unidade: temUnidade ? unidade : ''
+    };
+
+    if (!(precoVenda > 0)) {
+        alert('Busque um produto e calcule o preço antes de abrir a DRE.');
+        return;
+    }
+
+    $.ajax({
+        url: $('#btn_ver_dre').data('url'),
+        type: 'POST',
+        dataType: 'json',
+        data: dados,
+        success: function (dre) {
+            renderizarDre(dre, trib, temUnidade);
+            $('#modalDre').modal('show');
+        },
+        error: function (xhr) {
+            alert('Não foi possível montar a DRE (' + xhr.status + ').');
+        }
+    });
+}
+
+function renderizarDre(dre, trib, temUnidade) {
+    var simbolo = dre.unidade === 'M3' ? 'm³' : 'm²';
+    var corpo = $('#dre_corpo').empty();
+
+    $('#dre_titulo_produto').text(typeof montarTituloProdutoMemoria === 'function' ? montarTituloProdutoMemoria() : '');
+    $('.dre-un-m2').text(temUnidade ? 'por ' + simbolo : '(sem dimensões)');
+
+    $.each(dre.linhas, function (i, l) {
+        var classe = l.tipo === 'subtotal' ? 'dre-subtotal' : (l.tipo === 'total' ? 'dre-total' : (l.tipo === 'credito' ? 'dre-credito' : ''));
+        var tr = $('<tr>').addClass(classe);
+
+        tr.append($('<td>').text(l.rotulo));
+        tr.append($('<td class="dre-num">').text(formatCurrencyNumber(l.valor)));
+        tr.append($('<td class="dre-num">').text(temUnidade ? formatCurrencyNumber(l.valor_unid) : '—'));
+        tr.append($('<td class="dre-num">').text(formatPercentNumber(l.percentual) + '%'));
+        tr.append($('<td class="dre-formula">').text(l.formula));
+        corpo.append(tr);
+    });
+
+    var r = trib.regra;
+    $('#dre_reforma').show().text(
+        'Reforma tributária ' + trib.ano + ' (' + r.fase + '): CBS cheia ' + formatPercentNumber(trib.cbsRef) + '% × entrada ' +
+        formatPercentNumber(r.cbs_entra) + '% = ' + formatPercentNumber(trib.cbs) + '% · IBS cheia ' + formatPercentNumber(trib.ibsRef) +
+        '% × entrada ' + formatPercentNumber(r.ibs_entra) + '% = ' + formatPercentNumber(trib.ibs) + '% · ICMS sai ' +
+        formatPercentNumber(r.icms_sai) + '% · PIS/COFINS saem ' + formatPercentNumber(r.pis_cofins_sai) + '%'
+    );
+
+    // Conferência de fechamento com os cards (tolerância de arredondamento de centavos)
+    var confere = [
+        ['Valor Venda', dre.resumo.preco, parseBRNumber($('#card_valor_venda').text())],
+        ['Valor final ao cliente', dre.resumo.receita_bruta, parseBRNumber($('#card_final_valor').text())],
+        ['MC - Margem de Contribuição', dre.resumo.mc, parseBRNumber($('#card_mc_valor').text())],
+        ['ML - Margem Líquida', dre.resumo.ml, parseBRNumber($('#card_ml_valor').text())]
+    ];
+    var divergencias = [];
+
+    $.each(confere, function (i, c) {
+        if (Math.abs(c[1] - c[2]) > 0.011) {
+            divergencias.push(c[0] + ': DRE ' + formatCurrencyNumber(c[1]) + ' × card ' + formatCurrencyNumber(c[2]));
+        }
+    });
+
+    $('#dre_conferencia').html(
+        divergencias.length
+            ? '<div class="alert alert-danger py-1 px-2 mb-0"><i class="fas fa-exclamation-triangle"></i> A DRE não fecha com os cards — ' + $('<div>').text(divergencias.join(' · ')).html() + '</div>'
+            : '<div class="alert alert-success py-1 px-2 mb-0"><i class="fas fa-check-circle"></i> DRE conferida: Valor Venda, Valor final, MC e ML batem com os cards.</div>'
+    );
+}
+
+function configurarEventosDre() {
+    $(document).off('click.formacaoDre', '#btn_ver_dre');
+    $(document).on('click.formacaoDre', '#btn_ver_dre', function () {
+        abrirDre();
+    });
+
+    $(document).off('click.formacaoDreImprimir', '#btn_imprimir_dre');
+    $(document).on('click.formacaoDreImprimir', '#btn_imprimir_dre', function () {
+        window.print();
+    });
+}
+
 function atualizarCardVendaUnitario(precoVenda, info) {
     var unidade = (info.unidade || '').toUpperCase();
     var temUnidade = temFatorUnidade(info.fator) && (unidade === 'M2' || unidade === 'M3');
@@ -1418,6 +1578,13 @@ function coletarDadosFormacaoPreco() {
         ibs_cbs_credito: tribReforma.creditoPct,
         ibs_cbs_ano: tribReforma.ano,
         valor_credito_ibs_cbs: tribReforma.credito,
+        // foto da transição usada (auditoria): alíquota cheia, % de entrada/saída do ano
+        cbs_referencia: tribReforma.cbsRef,
+        ibs_referencia: tribReforma.ibsRef,
+        cbs_entrada: tribReforma.regra.cbs_entra,
+        ibs_entrada: tribReforma.regra.ibs_entra,
+        icms_saida: tribReforma.regra.icms_sai,
+        pis_cofins_saida: tribReforma.regra.pis_cofins_sai,
         ir_csll: parseBRNumber($('#parametro_ir_csll').val()),
         difal: parseBRNumber($('#parametro_difal').val()),
         frete_percentual: parseBRNumber($('#parametro_frete_percentual').val()),
