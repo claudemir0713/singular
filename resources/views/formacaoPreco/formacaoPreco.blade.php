@@ -25,6 +25,11 @@
         $outros = $parametro->outros ?? 0;
         $margem = $parametro->margem ?? 0;
         $comissao = $parametro->comissao ?? 0;
+        $ibs = $parametro->ibs ?? 0;
+        $cbs = $parametro->cbs ?? 0;
+        $ibsCbsCredito = $parametro->ibs_cbs_credito ?? 0;
+        $ibsCbsAno = $parametro->ibs_cbs_ano ?? '';
+        $regraTransicao = $regraTransicao ?? app(\App\Services\FormacaoPrecoService::class)->regraTransicaoTributaria();
 
         $prazoDias = 30;
         $formaCalculo = 0;
@@ -85,6 +90,12 @@
             <input type="hidden" name="parametro_despesa_fixa" id="parametro_despesa_fixa"
                 value="{{ $fmt($despesaFixa) }}">
             <input type="hidden" name="parametro_outros" id="parametro_outros" value="{{ $fmt($outros) }}">
+            {{-- Reforma tributária: alíquotas de referência cheias, % de crédito na compra e ano de vigência (vazio = ano atual) --}}
+            <input type="hidden" name="parametro_ibs" id="parametro_ibs" value="{{ $fmt($ibs) }}">
+            <input type="hidden" name="parametro_cbs" id="parametro_cbs" value="{{ $fmt($cbs) }}">
+            <input type="hidden" name="parametro_ibs_cbs_credito" id="parametro_ibs_cbs_credito" value="{{ $fmt($ibsCbsCredito) }}">
+            <input type="hidden" name="parametro_ibs_cbs_ano" id="parametro_ibs_cbs_ano" value="{{ $ibsCbsAno }}">
+            <script type="application/json" id="regra_transicao_tributaria">@json($regraTransicao)</script>
 
             <input type="hidden" name="preco_venda_calculado" id="preco_venda_calculado" value="">
             <input type="hidden" name="preco_venda" id="preco_venda" value="">

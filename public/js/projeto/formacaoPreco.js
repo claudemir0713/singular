@@ -174,6 +174,11 @@ function configurarEventosParametros() {
         carregarModalParametros();
     });
 
+    $(document).off('input.formacaoParametrosRT change.formacaoParametrosRT', '#ModalParamentros .atualiza_md_parametro, #md_parametro_ibs_cbs_ano');
+    $(document).on('input.formacaoParametrosRT change.formacaoParametrosRT', '#ModalParamentros .atualiza_md_parametro, #md_parametro_ibs_cbs_ano', function () {
+        atualizarInfoReformaModal();
+    });
+
     $(document).off('click.formacaoParametrosSimular', '#md_simular');
     $(document).on('click.formacaoParametrosSimular', '#md_simular', function () {
         aplicarModalParametros();
@@ -666,7 +671,141 @@ function limparDadosProduto() {
     );
 }
 
+/**
+ * Reforma tributária (EC 132/2023, LC 214/2025): linha da transição para o ano.
+ * A tabela vem do FormacaoPrecoService::regraTransicaoTributaria() (JSON na view).
+ */
+function regraTransicaoDoAno(ano) {
+    if (!window.regraTransicaoTributaria) {
+        try {
+            window.regraTransicaoTributaria = JSON.parse($('#regra_transicao_tributaria').text());
+        } catch (e) {
+            window.regraTransicaoTributaria = null;
+        }
+    }
+
+    var regra = window.regraTransicaoTributaria;
+
+    if (!regra || !regra.anos || !regra.anos.length) {
+        return {
+            ano: ano, fase: 'Sem reforma', cbs_modo: 'nenhum', ibs_modo: 'nenhum', cbs_teste: 0, ibs_teste: 0,
+            ibs_fator: 0, icms_fator: 1, pis_cofins_fator: 1, texto: ''
+        };
+    }
+
+    if (ano < regra.anos[0].ano) {
+        return regra.antes;
+    }
+
+    var ultima = regra.anos[regra.anos.length - 1];
+
+    if (ano >= ultima.ano) {
+        return ultima;
+    }
+
+    for (var i = 0; i < regra.anos.length; i++) {
+        if (regra.anos[i].ano === ano) {
+            return regra.anos[i];
+        }
+    }
+
+    return regra.antes;
+}
+
+/**
+ * Tributos da venda no ano de vigência, já considerando a transição (PIS/COFINS/ICMS caindo, IBS/CBS entrando)
+ * e o crédito de IBS/CBS na compra. Com IBS/CBS zerados e ano ≤ 2026, devolve exatamente o cálculo antigo.
+ * Os valores vêm dos campos ocultos da tela; "p" permite simular com os valores ainda não aplicados (modal).
+ *
+ * Premissas: IBS/CBS entram como % do preço de venda (por fora do ICMS/PIS/COFINS, como os demais tributos
+ * do divisor) e o crédito = custo de materiais × alíquota IBS+CBS × % creditável.
+ */
+function tributosVendaReforma(custoMateriais, p) {
+    p = p || {};
+
+    var campo = function (chave, seletor) {
+        return parseBRNumber(p[chave] !== undefined ? p[chave] : $(seletor).val());
+    };
+
+    var anoInformado = p.ano !== undefined ? p.ano : $('#parametro_ibs_cbs_ano').val();
+    var ano = parseInt(anoInformado, 10) || (new Date()).getFullYear();
+    var regra = regraTransicaoDoAno(ano);
+
+    var cbsRef = campo('cbs', '#parametro_cbs');
+    var ibsRef = campo('ibs', '#parametro_ibs');
+    var creditoPct = Math.min(100, Math.max(0, campo('credito', '#parametro_ibs_cbs_credito')));
+
+    // Em "teste" (2026; IBS em 2027-2028) a alíquota é compensada: não onera o preço.
+    var cbs = regra.cbs_modo === 'cheia' ? cbsRef : 0;
+    var ibs = (regra.ibs_modo === 'cheia' || regra.ibs_modo === 'parcial') ? ibsRef * regra.ibs_fator : 0;
+    var total = cbs + ibs;
+
+    var icms = campo('icms', '#parametro_icms') * regra.icms_fator;
+    var pis = campo('pis', '#parametro_pis') * regra.pis_cofins_fator;
+    var cofins = campo('cofins', '#parametro_cofins') * regra.pis_cofins_fator;
+    var simples = campo('simples', '#parametro_simples');
+
+    return {
+        ano: ano,
+        regra: regra,
+        cbs: cbs,
+        ibs: ibs,
+        totalIbsCbs: total,
+        icms: icms,
+        pis: pis,
+        cofins: cofins,
+        simples: simples,
+        creditoPct: creditoPct,
+        percentual: icms + simples + pis + cofins + total,
+        credito: custoMateriais > 0 ? custoMateriais * (total / 100) * (creditoPct / 100) : 0
+    };
+}
+
+function descricaoModoReforma(t) {
+    var r = t.regra;
+
+    if (r.cbs_modo === 'teste') {
+        return 'teste ' + formatPercentNumber(r.cbs_teste) + '% (não onera)';
+    }
+
+    return r.cbs_modo === 'cheia' ? 'plena' : '—';
+}
+
+/** Mostra no modal o que vale para o ano escolhido, com os valores digitados (ainda não aplicados). */
+function atualizarInfoReformaModal() {
+    var t = tributosVendaReforma(0, {
+        ano: $('#md_parametro_ibs_cbs_ano').val(),
+        cbs: $('#md_parametro_cbs').val(),
+        ibs: $('#md_parametro_ibs').val(),
+        credito: $('#md_parametro_ibs_cbs_credito').val(),
+        icms: $('#md_parametro_icms').val(),
+        pis: $('#md_parametro_pis').val(),
+        cofins: $('#md_parametro_cofins').val(),
+        simples: $('#md_parametro_simples').val()
+    });
+    var r = t.regra;
+
+    $('#md_rt_fase').text(t.ano + ' · ' + r.fase);
+    $('#md_rt_ano_label').text(t.ano);
+    $('#md_rt_texto').text(r.texto || 'Reforma tributária ainda não vigente neste ano.');
+
+    $('#md_rt_cbs').text(formatPercentNumber(t.cbs) + '%');
+    $('#md_rt_ibs').text(formatPercentNumber(t.ibs) + '%');
+    $('#md_rt_total').text(formatPercentNumber(t.totalIbsCbs) + '%');
+    $('#md_rt_icms').text(formatPercentNumber(t.icms) + '%');
+    $('#md_rt_piscofins').text(formatPercentNumber(t.pis + t.cofins) + '%');
+
+    $('#md_aviso_pis_cofins').toggleClass('d-none', r.pis_cofins_fator >= 1);
+    $('#md_aviso_icms').toggleClass('d-none', r.icms_fator >= 1);
+}
+
 function carregarModalParametros() {
+    $('#md_parametro_ibs').val($('#parametro_ibs').val());
+    $('#md_parametro_cbs').val($('#parametro_cbs').val());
+    $('#md_parametro_ibs_cbs_credito').val($('#parametro_ibs_cbs_credito').val());
+    $('#md_parametro_ibs_cbs_ano').val($('#parametro_ibs_cbs_ano').val());
+    atualizarInfoReformaModal();
+
     $('#md_margem').val($('#margem').val());
     $('#md_comissao').val($('#comissao').val());
 
@@ -683,6 +822,11 @@ function carregarModalParametros() {
 }
 
 function aplicarModalParametros() {
+    $('#parametro_ibs').val($('#md_parametro_ibs').val());
+    $('#parametro_cbs').val($('#md_parametro_cbs').val());
+    $('#parametro_ibs_cbs_credito').val($('#md_parametro_ibs_cbs_credito').val());
+    $('#parametro_ibs_cbs_ano').val($('#md_parametro_ibs_cbs_ano').val());
+
     $('#margem').val($('#md_margem').val());
     $('#comissao').val($('#md_comissao').val());
 
@@ -884,11 +1028,9 @@ function atualizarPrecoVenda() {
 
     var custoTotal = custoMateriais + custoMoi + custoMoe + freteValor;
 
-    var icms = parseBRNumber($('#parametro_icms').val());
-    var simples = parseBRNumber($('#parametro_simples').val());
-    var pis = parseBRNumber($('#parametro_pis').val());
-    var cofins = parseBRNumber($('#parametro_cofins').val());
-    var impostoVenda = icms + simples + pis + cofins;
+    // ICMS/PIS/COFINS pela transição + IBS/CBS; o crédito de IBS/CBS na compra reduz o custo a recuperar.
+    var trib = tributosVendaReforma(custoMateriais);
+    var impostoVenda = trib.percentual;
 
     var calculoPorPreco = $('#formaCalculo2').is(':checked');
     var resultado;
@@ -899,7 +1041,7 @@ function atualizarPrecoVenda() {
         resultado = montarResultadoPorPrecoInformado(precoVenda, custoTotal);
     } else {
         resultado = precoVendaCalcular({
-            custo: custoTotal,
+            custo: custoTotal - trib.credito,
             imposto_custo: 0,
             imposto_venda: impostoVenda,
             difal: $('#parametro_difal').val(),
@@ -936,10 +1078,7 @@ function calcularMemoriaPreco(precoVenda, custoTotal) {
     var prazo = parseBRNumber($('#prazo').val());
     var taxaFinanceira = parseBRNumber($('#parametro_taxa_financeira').val());
 
-    var icms = parseBRNumber($('#parametro_icms').val());
-    var simples = parseBRNumber($('#parametro_simples').val());
-    var pis = parseBRNumber($('#parametro_pis').val());
-    var cofins = parseBRNumber($('#parametro_cofins').val());
+    var trib = tributosVendaReforma(lerCusto('#custo_materiais'));
 
     var difal = parseBRNumber($('#parametro_difal').val());
     var fretePercent = parseBRNumber($('#parametro_frete_percentual').val());
@@ -949,7 +1088,7 @@ function calcularMemoriaPreco(precoVenda, custoTotal) {
     var despesaFixa = parseBRNumber($('#parametro_despesa_fixa').val());
     var irCsll = parseBRNumber($('#parametro_ir_csll').val());
 
-    var percentualImpostos = icms + simples + pis + cofins;
+    var percentualImpostos = trib.percentual;
     var percentualOutrasVariaveis = difal + fretePercent + outros + comissao;
 
     var taxaFinanceiraEfetiva = (Math.pow((taxaFinanceira / 100) + 1, prazo / 30) - 1) * 100;
@@ -958,7 +1097,8 @@ function calcularMemoriaPreco(precoVenda, custoTotal) {
         taxaFinanceiraEfetiva = 0;
     }
 
-    var valorImpostos = precoVenda > 0 ? precoVenda * (percentualImpostos / 100) : 0;
+    // Impostos devidos na venda menos o crédito de IBS/CBS da compra (sem IBS/CBS o crédito é 0).
+    var valorImpostos = precoVenda > 0 ? precoVenda * (percentualImpostos / 100) - trib.credito : 0;
     var valorOutrasVariaveis = precoVenda > 0 ? precoVenda * (percentualOutrasVariaveis / 100) : 0;
 
     var baseCustoFinanceiro = custoTotal + valorImpostos + valorOutrasVariaveis;
@@ -1194,6 +1334,8 @@ function salvarFormacaoPreco() {
 }
 
 function coletarDadosFormacaoPreco() {
+    var tribReforma = tributosVendaReforma(lerCusto('#custo_materiais'));
+
     return {
         _token: $('input[name="_token"]').val(),
 
@@ -1225,10 +1367,16 @@ function coletarDadosFormacaoPreco() {
         comissao: parseBRNumber($('#comissao').val()),
 
         taxa_financeira: parseBRNumber($('#parametro_taxa_financeira').val()),
-        icms: parseBRNumber($('#parametro_icms').val()),
-        simples: parseBRNumber($('#parametro_simples').val()),
-        pis: parseBRNumber($('#parametro_pis').val()),
-        cofins: parseBRNumber($('#parametro_cofins').val()),
+        // Alíquotas efetivas no ano de vigência (iguais às digitadas enquanto a reforma não altera o tributo).
+        icms: tribReforma.icms,
+        simples: tribReforma.simples,
+        pis: tribReforma.pis,
+        cofins: tribReforma.cofins,
+        ibs: tribReforma.ibs,
+        cbs: tribReforma.cbs,
+        ibs_cbs_credito: tribReforma.creditoPct,
+        ibs_cbs_ano: tribReforma.ano,
+        valor_credito_ibs_cbs: tribReforma.credito,
         ir_csll: parseBRNumber($('#parametro_ir_csll').val()),
         difal: parseBRNumber($('#parametro_difal').val()),
         frete_percentual: parseBRNumber($('#parametro_frete_percentual').val()),
@@ -1599,10 +1747,11 @@ function configurarModalDescontoPreco() {
 
         var precoVenda = parseBRNumber($('#preco_venda_calculado').val());
 
-        var icms = parseBRNumber($('#parametro_icms').val());
-        var simples = parseBRNumber($('#parametro_simples').val());
-        var pis = parseBRNumber($('#parametro_pis').val());
-        var cofins = parseBRNumber($('#parametro_cofins').val());
+        var trib = tributosVendaReforma(custoMateriais);
+        var icms = trib.icms;
+        var simples = trib.simples;
+        var pis = trib.pis;
+        var cofins = trib.cofins;
 
         var comissao = parseBRNumber($('#comissao').val());
         var fretePercentual = parseBRNumber($('#parametro_frete_percentual').val());
@@ -1616,7 +1765,7 @@ function configurarModalDescontoPreco() {
 
         var margemInformada = parseBRNumber($('#margem').val());
 
-        var percentualImpostos = icms + simples + pis + cofins;
+        var percentualImpostos = trib.percentual;
         var percentualOutrasVariaveis = difal + fretePercentual + outros + comissao;
 
         var taxaFinanceiraEfetiva = (Math.pow((taxaFinanceira / 100) + 1, prazo / 30) - 1) * 100;
@@ -1632,7 +1781,7 @@ function configurarModalDescontoPreco() {
         }
 
         var valorImpostos = precoVenda > 0
-            ? precoVenda * (percentualImpostos / 100)
+            ? precoVenda * (percentualImpostos / 100) - trib.credito
             : 0;
 
         var valorOutrasVariaveis = precoVenda > 0
@@ -1723,6 +1872,11 @@ function configurarModalDescontoPreco() {
         preencherPercentualMemoria('memoria_simples', 'memoria_simples_bar', simples);
         preencherPercentualMemoria('memoria_pis', 'memoria_pis_bar', pis);
         preencherPercentualMemoria('memoria_cofins', 'memoria_cofins_bar', cofins);
+        preencherPercentualMemoria('memoria_cbs', 'memoria_cbs_bar', trib.cbs);
+        preencherPercentualMemoria('memoria_ibs', 'memoria_ibs_bar', trib.ibs);
+        $('#memoria_cbs_ano').text('(' + trib.ano + ' · ' + descricaoModoReforma(trib) + ')');
+        $('#memoria_ibs_ano').text('(' + trib.ano + ' · ' + trib.regra.fase + ')');
+        $('#memoria_credito_ibs_cbs').text('R$ ' + formatCurrencyNumber(trib.credito));
 
         $('#memoria_imposto_venda').text(formatPercentNumber(percentualImpostos) + '%');
         $('#memoria_valor_impostos').text('R$ ' + formatCurrencyNumber(valorImpostos));

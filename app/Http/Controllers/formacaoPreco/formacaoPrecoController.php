@@ -36,7 +36,14 @@ class FormacaoPrecoController extends Controller
             ]
         );
 
-        return view('formacaoPreco.formacaoPreco', compact('parametro'));
+        // Colunas novas (migration 2026_11_16_130000): sem elas a tela continua funcionando com IBS/CBS zerados.
+        foreach (['ibs', 'cbs', 'ibs_cbs_credito'] as $c) {
+            $parametro->{$c} = $parametro->{$c} ?? 0;
+        }
+
+        $regraTransicao = app(FormacaoPrecoService::class)->regraTransicaoTributaria();
+
+        return view('formacaoPreco.formacaoPreco', compact('parametro', 'regraTransicao'));
     }
 
 
@@ -756,6 +763,15 @@ class FormacaoPrecoController extends Controller
                     ),
 
                     /*
+                    * Reforma tributária (alíquotas efetivas no ano de vigência).
+                    */
+                    'ibs' => $this->normalizarDecimal($request->get('ibs')),
+                    'cbs' => $this->normalizarDecimal($request->get('cbs')),
+                    'ibs_cbs_credito' => $this->normalizarDecimal($request->get('ibs_cbs_credito')),
+                    'ibs_cbs_ano' => (int) $request->get('ibs_cbs_ano') ?: null,
+                    'valor_credito_ibs_cbs' => $this->normalizarDecimal($request->get('valor_credito_ibs_cbs')),
+
+                    /*
                     * Valores calculados.
                     */
                     'valor_venda' => $this->normalizarDecimal(
@@ -906,6 +922,10 @@ class FormacaoPrecoController extends Controller
             $parametro->frete = $this->normalizarDecimal($request->get('md_parametro_frete_percentual'));
             $parametro->despesa_fixa = $this->normalizarDecimal($request->get('md_parametro_despesa_fixa'));
             $parametro->outros = $this->normalizarDecimal($request->get('md_parametro_outros'));
+            $parametro->ibs = $this->normalizarDecimal($request->get('md_parametro_ibs'));
+            $parametro->cbs = $this->normalizarDecimal($request->get('md_parametro_cbs'));
+            $parametro->ibs_cbs_credito = min(100, max(0, (float) $this->normalizarDecimal($request->get('md_parametro_ibs_cbs_credito'))));
+            $parametro->ibs_cbs_ano = (int) $request->get('md_parametro_ibs_cbs_ano') ?: null;
 
             $parametro->save();
 

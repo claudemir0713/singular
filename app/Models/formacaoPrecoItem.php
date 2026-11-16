@@ -143,6 +143,15 @@ class formacaoPrecoItem extends Model
         'outros',
 
         /*
+         * Reforma tributária: alíquotas efetivas de IBS/CBS usadas, ano e crédito aplicado.
+         */
+        'ibs',
+        'cbs',
+        'ibs_cbs_credito',
+        'ibs_cbs_ano',
+        'valor_credito_ibs_cbs',
+
+        /*
          * Preço final.
          */
         'valor_venda',
@@ -282,6 +291,11 @@ class formacaoPrecoItem extends Model
         'frete_percentual' => 'decimal:6',
         'despesa_fixa' => 'decimal:6',
         'outros' => 'decimal:6',
+        'ibs' => 'decimal:6',
+        'cbs' => 'decimal:6',
+        'ibs_cbs_credito' => 'decimal:6',
+        'ibs_cbs_ano' => 'integer',
+        'valor_credito_ibs_cbs' => 'decimal:6',
 
         /*
          * Valores calculados.

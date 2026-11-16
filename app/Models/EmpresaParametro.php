@@ -24,5 +24,9 @@ class EmpresaParametro extends Model
         'frete',
         'despesa_fixa',
         'outros',
+        'ibs',
+        'cbs',
+        'ibs_cbs_credito',
+        'ibs_cbs_ano',
     ];
 }

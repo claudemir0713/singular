@@ -119,6 +119,48 @@ class FormacaoPrecoService
     }
 
     /**
+     * Regra de transição da reforma tributária do consumo (EC 132/2023, LC 214/2025, LC 227/2026), por ano.
+     * Única fonte da regra: a tela recebe esta tabela e o cálculo de preço (JS) a aplica sobre as alíquotas de
+     * referência informadas em Parâmetros (as alíquotas cheias são fixadas por resolução do Senado e podem mudar).
+     *
+     *  - cbs_modo / ibs_modo: 'nenhum' | 'teste' (alíquota fixa, compensada, não onera o preço) | 'cheia' | 'parcial'
+     *  - cbs_teste / ibs_teste: alíquota fixa de teste (%), só informativa
+     *  - ibs_fator: fração da alíquota de referência do IBS cobrada no ano (modo parcial/cheia)
+     *  - icms_fator / pis_cofins_fator: fração do ICMS e de PIS/COFINS ainda cobrada no ano
+     */
+    public function regraTransicaoTributaria(): array
+    {
+        $linha = function (int $ano, string $fase, string $cbs, string $ibs, float $ibsFator, float $icmsFator, float $pisCofins, string $texto, float $cbsTeste = 0, float $ibsTeste = 0) {
+            return [
+                'ano' => $ano, 'fase' => $fase,
+                'cbs_modo' => $cbs, 'ibs_modo' => $ibs,
+                'cbs_teste' => $cbsTeste, 'ibs_teste' => $ibsTeste,
+                'ibs_fator' => $ibsFator, 'icms_fator' => $icmsFator, 'pis_cofins_fator' => $pisCofins,
+                'texto' => $texto,
+            ];
+        };
+
+        $tabela = [
+            $linha(2026, 'Ano de teste', 'teste', 'teste', 0, 1, 1,
+                'CBS 0,9% e IBS 0,1% apenas de teste (destaque na nota), compensados com PIS/COFINS: não oneram o preço. ICMS, PIS e COFINS seguem integrais.', 0.9, 0.1),
+            $linha(2027, 'CBS plena', 'cheia', 'teste', 0, 1, 0,
+                'CBS entra plena e PIS/COFINS são extintos. IBS de teste 0,1% (compensado com a CBS). ICMS integral.', 0, 0.1),
+            $linha(2028, 'CBS plena', 'cheia', 'teste', 0, 1, 0,
+                'CBS plena, PIS/COFINS extintos. IBS de teste 0,1% (compensado com a CBS). ICMS integral.', 0, 0.1),
+            $linha(2029, 'Entrada do IBS', 'cheia', 'parcial', 0.10, 0.90, 0, 'IBS a 10% da alíquota de referência; ICMS reduzido para 90%.'),
+            $linha(2030, 'Entrada do IBS', 'cheia', 'parcial', 0.20, 0.80, 0, 'IBS a 20% da alíquota de referência; ICMS reduzido para 80%.'),
+            $linha(2031, 'Entrada do IBS', 'cheia', 'parcial', 0.30, 0.70, 0, 'IBS a 30% da alíquota de referência; ICMS reduzido para 70%.'),
+            $linha(2032, 'Entrada do IBS', 'cheia', 'parcial', 0.40, 0.60, 0, 'IBS a 40% da alíquota de referência; ICMS reduzido para 60%.'),
+            $linha(2033, 'Sistema pleno', 'cheia', 'cheia', 1, 0, 0, 'IBS e CBS plenos; ICMS (e ISS) extintos.'),
+        ];
+
+        return [
+            'antes' => $linha(2025, 'Sem reforma', 'nenhum', 'nenhum', 0, 1, 1, 'Reforma ainda não vigente: ICMS, PIS e COFINS integrais.'),
+            'anos' => $tabela,
+        ];
+    }
+
+    /**
      * Competências (AAAA-MM) com custo para o produto, da mais recente para a mais antiga.
      */
     private function mesesDisponiveis(string $codigo): array

@@ -146,6 +146,22 @@
                                     <div id="memoria_cofins_bar" class="progress-bar bg-info" style="width: 0%"></div>
                                 </div>
 
+                                <div class="memoria-linha">
+                                    <span>CBS <small class="text-muted" id="memoria_cbs_ano"></small></span>
+                                    <strong id="memoria_cbs">0,00%</strong>
+                                </div>
+                                <div class="progress memoria-progress">
+                                    <div id="memoria_cbs_bar" class="progress-bar bg-success" style="width: 0%"></div>
+                                </div>
+
+                                <div class="memoria-linha">
+                                    <span>IBS <small class="text-muted" id="memoria_ibs_ano"></small></span>
+                                    <strong id="memoria_ibs">0,00%</strong>
+                                </div>
+                                <div class="progress memoria-progress">
+                                    <div id="memoria_ibs_bar" class="progress-bar bg-success" style="width: 0%"></div>
+                                </div>
+
                                 <hr>
 
                                 <div class="memoria-linha memoria-total">
@@ -154,7 +170,12 @@
                                 </div>
 
                                 <div class="memoria-linha memoria-total mt-2">
-                                    <span>Valor dos Impostos</span>
+                                    <span>Crédito IBS/CBS na compra</span>
+                                    <strong id="memoria_credito_ibs_cbs">R$ 0,00</strong>
+                                </div>
+
+                                <div class="memoria-linha memoria-total mt-2">
+                                    <span>Valor dos Impostos (líquido do crédito)</span>
                                     <strong id="memoria_valor_impostos">R$ 0,00</strong>
                                 </div>
 
