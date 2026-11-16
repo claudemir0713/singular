@@ -49,7 +49,7 @@ class DashboardController extends Controller
             return response()->json(['success' => false, 'message' => 'Sem permissão para este card.'], 403);
         }
         try {
-            return response()->json(['success' => true, 'detalhe' => $this->dashboardService->obterDetalheCard($card, array_merge($this->montarFiltros($request, $usuario), ['cenario' => (string) $request->input('cenario', 'base'), 'pedidos' => (string) $request->input('pedidos', '0')]))]);
+            return response()->json(['success' => true, 'detalhe' => $this->dashboardService->obterDetalheCard($card, array_merge($this->montarFiltros($request, $usuario), ['cenario' => (string) $request->input('cenario', 'conservador'), 'pedidos' => (string) $request->input('pedidos', '0')]))]);
         } catch (\InvalidArgumentException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         } catch (\Throwable $e) {

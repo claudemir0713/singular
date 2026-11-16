@@ -205,7 +205,7 @@ class DashboardService
 
             case 'proj_receber':
                 $cenarios = ['conservador' => 'Conservador', 'base' => 'Base', 'otimista' => 'Otimista'];
-                $cen = isset($filtros['cenario']) && isset($cenarios[$filtros['cenario']]) ? $filtros['cenario'] : 'base';
+                $cen = isset($filtros['cenario']) && isset($cenarios[$filtros['cenario']]) ? $filtros['cenario'] : 'conservador';
                 $abate = !empty($filtros['pedidos']) && $filtros['pedidos'] !== '0';
                 $proj = $this->obterProjecaoRecebimentos($filtros);
                 $titulo = 'Entradas projetadas — cenário ' . strtolower($cenarios[$cen]) . ($abate ? ' (líquidas dos pedidos pendentes)' : '');
@@ -240,7 +240,7 @@ class DashboardService
 
             case 'proj_pagar':
                 $cenarios = ['conservador' => 'Conservador', 'base' => 'Base', 'otimista' => 'Otimista'];
-                $cen = isset($filtros['cenario']) && isset($cenarios[$filtros['cenario']]) ? $filtros['cenario'] : 'base';
+                $cen = isset($filtros['cenario']) && isset($cenarios[$filtros['cenario']]) ? $filtros['cenario'] : 'conservador';
                 $abate = false;
                 $proj = $this->obterProjecaoPagamentos($filtros);
                 $titulo = 'Saídas projetadas — cenário ' . strtolower($cenarios[$cen]) . ($abate ? ' (líquidas dos pedidos pendentes)' : '');
@@ -267,7 +267,7 @@ class DashboardService
                 }
                 $colunas[] = $moeda('VALOR', 'Saída projetada');
                 $nota = 'Nível mensal (' . strtolower($cenarios[$cen]) . '): R$ ' . number_format($proj['niveis'][$cen], 2, ',', '.')
-                    . ' — pagamentos (contas a pagar pagas) dos últimos meses válidos; conservador = maior pagamento, base = média, otimista = menor pagamento dos 6 últimos. '
+                    . ' — pagamentos (contas a pagar pagas) dos últimos meses válidos; conservador = menor, base = mediana, otimista = média dos 3 maiores dos 6 últimos. '
                     . 'Projeção bruta = nível × índice sazonal × fração do mês no período; saída projetada = projeção bruta − o que já está em carteira (contas a pagar e previsões a pagar), nunca negativa.'
                     . ($abate ? ' Os pedidos pendentes (R$ ' . number_format($proj['pedidos_pendentes'], 2, ',', '.') . '), que ainda não geram título, são abatidos dos primeiros meses para não contar duas vezes.' : '')
                     . (!empty($proj['meses_descartados']) ? ' Meses atípicos descartados do histórico: ' . implode(', ', $proj['meses_descartados']) . '.' : '');
@@ -470,7 +470,7 @@ class DashboardService
      *  1. Histórico: pagamentos mensais (contas a pagar pagas) dos últimos 24 meses fechados, descartando
      *     meses atípicos (< 50% ou > 200% da mediana).
      *  2. Nível mensal por cenário, sobre os 6 últimos meses válidos:
-     *     conservador = maior pagamento, base = média, otimista = menor pagamento.
+     *     conservador = menor, base = mediana, otimista = média dos 3 maiores.
      *  3. Sazonalidade leve: índice do mês = valor do mês / média do próprio ano, média entre os anos,
      *     suavizado em 50% e limitado a 0,70–1,30.
      *  4. Projeção do mês = nível × índice × fração do mês dentro do período (a partir de amanhã).
@@ -535,11 +535,10 @@ class DashboardService
         $v6 = array_values($ultimos);
         sort($v6);
         $c = count($v6);
-        // Saídas: lógica invertida — conservador = maior pagamento, base = média, otimista = menor pagamento.
         $niveis = [
-            'conservador' => $v6[$c - 1],
-            'base' => array_sum($v6) / $c,
-            'otimista' => $v6[0],
+            'conservador' => $v6[0],
+            'base' => $c % 2 ? $v6[intdiv($c, 2)] : ($v6[$c / 2 - 1] + $v6[$c / 2]) / 2,
+            'otimista' => array_sum(array_slice($v6, -3)) / min(3, $c),
         ];
 
         // 3. sazonalidade leve (índice do mês dentro do próprio ano)

@@ -116,7 +116,7 @@
         $('#dashboardAuditModal').modal('show');
 
         var filtros = $('#dashboard-filter-form').serialize();
-        $.getJSON(url + '?' + filtros + '&card=' + encodeURIComponent(card) + '&cenario=' + encodeURIComponent((card === 'proj_pagar' ? $('#cenario-pagar').val() : $('#cenario-proj').val()) || 'base') + '&pedidos=' + ($('.dashboard-prev-check[data-prev="pedidos_pendentes"]').is(':checked') ? '1' : '0')).done(function (r) {
+        $.getJSON(url + '?' + filtros + '&card=' + encodeURIComponent(card) + '&cenario=' + encodeURIComponent((card === 'proj_pagar' ? $('#cenario-pagar').val() : $('#cenario-proj').val()) || 'conservador') + '&pedidos=' + ($('.dashboard-prev-check[data-prev="pedidos_pendentes"]').is(':checked') ? '1' : '0')).done(function (r) {
             if (!r || !r.success) {
                 $('#audit-erro').removeClass('d-none').text((r && r.message) || 'Não foi possível carregar a auditoria.');
                 return;
