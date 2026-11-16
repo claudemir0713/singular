@@ -115,12 +115,12 @@ class DashboardService
                     $l->OUTRAS = $cred ? 0 : (float) $l->CON_VALOR_OUTRASDESPESAS;
                     // Crédito: exibe o já consumido e o saldo restante (negativo), sem contar duas vezes.
                     $l->CREDITO = $cred ? (float) $l->CON_VALOR_TOTAL_PAGO : 0;
-                    $l->VALOR = $cred
-                        ? -(float) $l->CON_VALOR_CORRIGIDO
-                        : $l->ORIGINAL - $l->PAGO - $l->DESCONTO + $l->OUTRAS;
+                    $l->VALOR = $cred ? -(float) $l->CON_VALOR_CORRIGIDO : (float) $l->CON_VALOR_CORRIGIDO;
+                    // Juros/multa = saldo corrigido − (original − pago − desconto + outras despesas)
+                    $l->ENCARGOS = $cred ? 0 : $l->VALOR - ($l->ORIGINAL - $l->PAGO - $l->DESCONTO + $l->OUTRAS);
                 });
-                $colunas = array_merge($colunasTitulo, [$moeda('ORIGINAL', 'Original'), $moeda('PAGO', 'Pago'), $moeda('DESCONTO', 'Desconto'), $moeda('OUTRAS', 'Outras desp.'), $moeda('CREDITO', 'Crédito'), $moeda('VALOR', 'Valor no card')]);
-                $nota = 'Valor no card = original − pago − desconto + outras despesas (sem juros e multas). Crédito: valor negativo = saldo restante; coluna Crédito = parte já consumida.';
+                $colunas = array_merge($colunasTitulo, [$moeda('ORIGINAL', 'Original'), $moeda('PAGO', 'Pago'), $moeda('DESCONTO', 'Desconto'), $moeda('OUTRAS', 'Outras desp.'), $moeda('CREDITO', 'Crédito'), $moeda('ENCARGOS', 'Juros/multa'), $moeda('VALOR', 'Valor no card')]);
+                $nota = 'Valor no card = original − pago − desconto + outras despesas + juros e multas (saldo atualizado, igual ao saldo do ERP). Crédito: valor negativo = saldo restante; coluna Crédito = parte já consumida.';
                 break;
 
             case 'pagar':
@@ -435,6 +435,7 @@ class DashboardService
 
         // TOTAL já é o saldo assinado (créditos negativos, já líquidos do que foi consumido).
         // Sem encargos = saldo − juros − multa. Não subtrair CREDITOS de novo (dupla contagem).
+        // TOTAL = saldo assinado das duplicatas (créditos negativos), já com juros e multa (igual ao saldo do ERP).
         $totalDuplicatasSemEncargos = (float) ($duplicatas->TOTAL ?? 0)
             - (float) ($duplicatas->VALOR_JUROS ?? 0)
             - (float) ($duplicatas->VALOR_MULTA ?? 0);
@@ -452,6 +453,8 @@ class DashboardService
             'TOTAL_RECEBER_CHEQUES_SEM_ENCARGOS' => $totalChequesSemEncargos,
             'TOTAL_RECEBER_DUPLICATAS' => (float) ($duplicatas->TOTAL ?? 0),
             'TOTAL_RECEBER_DUPLICATAS_BRUTO' => (float) ($duplicatas->DUPLICATAS ?? 0),
+            'RECEBER_PAGO_CREDITOS' => (float) ($duplicatas->PAGO_CREDITOS ?? 0),
+            'RECEBER_ORIGINAL_DUPLICATAS' => (float) ($duplicatas->VALOR_ORIGINAL ?? 0),
             'TOTAL_RECEBER_CREDITOS' => (float) ($duplicatas->CREDITOS ?? 0),
             'TOTAL_RECEBER_CREDITOS_NEGATIVO' => -(float) ($duplicatas->CREDITOS ?? 0),
             'TOTAL_RECEBER_CHEQUES' => (float) ($cheques->TOTAL ?? 0),
@@ -636,6 +639,7 @@ class DashboardService
             SELECT
                 COALESCE(SUM({$originalComSinal}), 0) AS VALOR_ORIGINAL,
                 COALESCE(SUM(CASE WHEN FC.CON_TIPO = 0 THEN FC.CON_VALOR_TOTAL_PAGO ELSE 0 END), 0) AS VALOR_PAGO,
+                COALESCE(SUM(CASE WHEN FC.CON_TIPO = 2 THEN FC.CON_VALOR_TOTAL_PAGO ELSE 0 END), 0) AS PAGO_CREDITOS,
                 COALESCE(SUM(CASE WHEN FC.CON_TIPO = 0 THEN FC.CON_VALOR_JUROS ELSE 0 END), 0) AS VALOR_JUROS,
                 COALESCE(SUM(CASE WHEN FC.CON_TIPO = 0 THEN FC.CON_VALOR_MULTA ELSE 0 END), 0) AS VALOR_MULTA,
                 COALESCE(SUM(CASE WHEN FC.CON_TIPO = 0 THEN FC.CON_VALOR_DESCONTO ELSE 0 END), 0) AS VALOR_DESCONTO,
