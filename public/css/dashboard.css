@@ -261,3 +261,5 @@ html.audit-aberto,html.audit-aberto body{overflow:hidden !important}
 .dashboard-seg button:hover{color:#3d4f9f}
 .dashboard-seg button.ativo{background:#fff;box-shadow:0 1px 2px rgba(61,79,159,.25);color:#3d4f9f}
 .card-proj-receber .dashboard-prev-toggle{margin-top:8px}
+
+.dashboard-card-resumo{border-top:1px dashed #dfe5e8;margin-top:10px;padding-top:7px;font-size:11px;color:#657681}.dashboard-card-resumo>div{display:flex;justify-content:space-between;gap:8px;margin-top:3px}.dashboard-card-resumo-total{border-top:1px solid #dfe5e8;color:#263846;font-weight:700;margin-top:6px!important;padding-top:4px}

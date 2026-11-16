@@ -466,7 +466,7 @@ class DashboardService
             'RECEBER_VALOR_DESCONTO' => (float) ($duplicatas->VALOR_DESCONTO ?? 0),
             'RECEBER_OUTRAS_DESPESAS' => (float) ($duplicatas->VALOR_OUTRAS_DESPESAS ?? 0),
             'RECEBER_SALDO_ATUALIZADO' => $totalReceber,
-            'RECEBER_SALDO_ORIGINAL_MENOS_PAGAMENTOS' => (float) ($duplicatas->VALOR_ORIGINAL ?? 0) - (float) ($duplicatas->VALOR_PAGO ?? 0),
+            'RECEBER_SALDO_ORIGINAL_MENOS_PAGAMENTOS' => $totalReceber, // duplicatas (créditos líquidos) + cheques, com juros e multa
             'RECEBER_ORIGINAL_VENCIDO' => (float) ($duplicatas->ORIGINAL_VENCIDO ?? 0),
             'RECEBER_PAGO_VENCIDO' => (float) ($duplicatas->PAGO_VENCIDO ?? 0),
             'RECEBER_CREDITOS_VENCIDOS' => (float) ($duplicatas->CREDITOS_VENCIDOS ?? 0),
@@ -474,7 +474,7 @@ class DashboardService
             'RECEBER_OUTRAS_DESPESAS_VENCIDAS' => (float) ($duplicatas->OUTRAS_DESPESAS_VENCIDAS ?? 0),
             'RECEBER_JUROS_VENCIDOS' => (float) ($duplicatas->JUROS_VENCIDOS ?? 0),
             'RECEBER_MULTA_VENCIDA' => (float) ($duplicatas->MULTA_VENCIDA ?? 0),
-            'SALDO_PROJETADO_ORIGINAL' => $totalReceberSemEncargos - (float) ($pagar->TOTAL ?? 0),
+            'SALDO_PROJETADO_ORIGINAL' => $totalReceber - (float) ($pagar->TOTAL ?? 0),
             'TOTAL_PAGAR' => (float) ($pagar->TOTAL ?? 0),
             'SALDO_PROJETADO' => $totalReceber - (float) ($pagar->TOTAL ?? 0),
             'TOTAL_RECEBER_VENCIDO' => $totalReceberVencido,
