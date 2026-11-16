@@ -255,11 +255,17 @@
             var b = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Importando...');
             ajax({ url: R.importarErp, type: 'POST', timeout: 0, data: { de: de, ate: ate } }).done(function (r) {
                 $('#modalErp').modal('hide');
-                var novas = r.resumos + r.completos;
-                Swal.fire({
-                    icon: 'success', title: 'Importação concluída',
-                    html: novas ? 'Novos resumos: <b>' + r.resumos + '</b> · XML completos: <b>' + r.completos + '</b>' : 'Nenhuma nota nova no ERP' + ((de || ate) ? ' neste período.' : '.')
-                });
+                var importados = r.resumos + r.completos, atualizados = r.ciencias || 0;
+                var linha = function (rotulo, valor, cor) { return '<tr><td class="text-left">' + rotulo + '</td><td class="text-right"><b class="' + (cor || '') + '">' + valor + '</b></td></tr>'; };
+                var html = '<table class="table table-sm mb-2 mx-auto" style="max-width:340px;">' +
+                    linha('Lidos no ERP', r.lidos) +
+                    linha('Importados (novos)', importados, importados ? 'text-success' : 'text-muted') +
+                    linha('&nbsp;&nbsp;<small>resumos</small>', '<small>' + r.resumos + '</small>') +
+                    linha('&nbsp;&nbsp;<small>XML completos</small>', '<small>' + r.completos + '</small>') +
+                    linha('Atualizados (ciência)', atualizados, atualizados ? 'text-primary' : 'text-muted') +
+                    linha('Já existiam, sem mudança', r.ignorados, 'text-muted') + '</table>';
+                html += '<small class="text-muted">' + (de || ate ? 'Período: ' + (de ? data(de) : 'início') + ' a ' + (ate ? data(ate) : 'hoje') : 'Sem filtro de período') + '</small>';
+                Swal.fire({ icon: (importados || atualizados) ? 'success' : 'info', title: (importados || atualizados) ? 'Importação concluída' : 'Nada novo para importar', html: html });
                 carregarStatus(); carregar(1);
             }).fail(function (xhr) { $('#erpErro').html('<i class="fas fa-exclamation-circle"></i> ' + esc(erro(xhr))).show(); })
               .always(function () { b.prop('disabled', false).html('<i class="fas fa-download"></i> Importar'); });

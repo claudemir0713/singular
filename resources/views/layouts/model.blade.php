@@ -65,8 +65,9 @@
             $version_js = env('VERSAO_JS');
         @endphp
 
-        <script src="{{ asset('js/functions.js?v='.$version_js) }}" type="text/javascript"></script>
-        <script src="{{ asset('js/custom.js?v='.$version_js) }}" type="text/javascript"></script>
+        {{-- versao = data de modificacao do arquivo: o navegador recarrega sozinho quando o JS muda (sem Ctrl+F5) --}}
+        <script src="{{ asset('js/functions.js') }}?v={{ filemtime(public_path('js/functions.js')) }}" type="text/javascript"></script>
+        <script src="{{ asset('js/custom.js') }}?v={{ filemtime(public_path('js/custom.js')) }}" type="text/javascript"></script>
 
     </head>
 

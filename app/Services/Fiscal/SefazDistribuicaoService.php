@@ -669,7 +669,9 @@ class SefazDistribuicaoService
         } while (count($lote) === 200);
 
         foreach (array_chunk(array_keys($ciencia), 500) as $ch) {
-            $r['ciencias'] += $db->table('nfe_distribuicao')->whereIn('chave', $ch)->whereNull('manifestacao')->update(['manifestacao' => '210210', 'manifestada_em' => now()]);
+            // conta notas (chaves distintas) que ganharam a marca de ciencia; uma nota pode ter varias linhas
+            $r['ciencias'] += $db->table('nfe_distribuicao')->whereIn('chave', $ch)->whereNull('manifestacao')->distinct()->count('chave');
+            $db->table('nfe_distribuicao')->whereIn('chave', $ch)->whereNull('manifestacao')->update(['manifestacao' => '210210', 'manifestada_em' => now()]);
         }
         // ponteiro de NSU: nunca recua; a consulta seguinte parte do ultimo NSU que o ERP ja leu
         $par = $erp->selectOne('select DFE_PROXIMO_NSU, DFE_NSU_MAXIMO from DFE_PARAMETROS');

@@ -530,7 +530,7 @@
 
     </div>
 
-    <script src="{{ asset('js/projeto/formacaoPreco.js?v=' . $version_js) }}"></script>
+    <script src="{{ asset('js/projeto/formacaoPreco.js') }}?v={{ filemtime(public_path('js/projeto/formacaoPreco.js')) }}"></script>
 
     <style>
         .formacao-preco-page {
