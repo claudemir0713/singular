@@ -636,7 +636,7 @@ class SefazDistribuicaoService
      * @param callable|null $progresso function(int $lidos)
      * @return array{lidos:int,resumos:int,completos:int,ignorados:int,ciencias:int,nsu:string}
      */
-    public function importarDoErp(?callable $progresso = null): array
+    public function importarDoErp(?callable $progresso = null, ?string $de = null, ?string $ate = null): array
     {
         $erp = DB::connection(env('ERP_CONNECTION', env('APP_NAME')));
         $db = $this->db();
@@ -644,9 +644,13 @@ class SefazDistribuicaoService
         $ciencia = [];
         $ultimo = '';
         do {
+            // periodo opcional pela data de emissao (so limita o que entra; o ponteiro de NSU abaixo continua valendo)
             $sql = 'select first 200 NFE_DES_NSU, NFE_DES_CHAVE, NFE_DES_SITUACAO_MANIFESTACAO, NFE_DES_XML from NFE_DESTINADA_CHAVE'
-                . ' where NFE_DES_XML is not null and NFE_DES_NSU > ? order by NFE_DES_NSU';
-            $lote = $erp->select($sql, [$ultimo]);
+                . ' where NFE_DES_XML is not null and NFE_DES_NSU > ?';
+            $par = [$ultimo];
+            if ($de && strtotime($de)) { $sql .= ' and NFE_DES_DATA_EMISSAO >= cast(? as timestamp)'; $par[] = date('Y-m-d', strtotime($de)) . ' 00:00:00'; }
+            if ($ate && strtotime($ate)) { $sql .= ' and NFE_DES_DATA_EMISSAO <= cast(? as timestamp)'; $par[] = date('Y-m-d', strtotime($ate)) . ' 23:59:59'; }
+            $lote = $erp->select($sql . ' order by NFE_DES_NSU', $par);
             foreach ($lote as $l) {
                 $nsu = str_pad($this->digitos($l->NFE_DES_NSU), 15, '0', STR_PAD_LEFT);
                 $ultimo = $l->NFE_DES_NSU;
@@ -749,7 +753,10 @@ class SefazDistribuicaoService
         }
         $this->db()->table('nfe_distribuicao')->where('chave', $chave)->update(['manifestacao' => $tp, 'manifestada_em' => now()]);
         // nova consulta liberada: a SEFAZ passa a entregar o XML completo
-        $this->db()->table('empresa_certificado')->where('id', $c->id)->update(['proxima_consulta' => null, 'updated_at' => now()]);
+        // so libera antes da hora se a espera era a de "nenhum documento" (137); o bloqueio 656 da SEFAZ nao pode ser antecipado
+        if (strpos((string) $c->ultimo_status, '656') !== 0) {
+            $this->db()->table('empresa_certificado')->where('id', $c->id)->update(['proxima_consulta' => null, 'updated_at' => now()]);
+        }
         return ['cStat' => $cs, 'motivo' => $mot];
     }
 

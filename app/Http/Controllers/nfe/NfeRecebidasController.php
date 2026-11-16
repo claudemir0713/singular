@@ -81,11 +81,19 @@ class NfeRecebidasController extends Controller
     }
 
     /** Traz do ERP Singular o que ele ja recebeu da SEFAZ (somente leitura no ERP). */
-    public function importarErp(SefazDistribuicaoService $svc)
+    public function importarErp(Request $request, SefazDistribuicaoService $svc)
     {
         set_time_limit(0);
+        $de = $request->input('de');
+        $ate = $request->input('ate');
+        if (($de && !strtotime($de)) || ($ate && !strtotime($ate))) {
+            return $this->falha('Período inválido.');
+        }
+        if ($de && $ate && strtotime($de) > strtotime($ate)) {
+            return $this->falha('A data inicial não pode ser maior que a final.');
+        }
         try {
-            return response()->json(['ok' => true] + $svc->importarDoErp());
+            return response()->json(['ok' => true] + $svc->importarDoErp(null, $de ?: null, $ate ?: null));
         } catch (\Throwable $e) {
             Log::error('Importacao do ERP: ' . $e->getMessage());
             return $this->falha('Não foi possível importar do ERP: ' . mb_substr($e->getMessage(), 0, 200), 500);

@@ -225,18 +225,37 @@
             }).always(function () { b.prop('disabled', false); });
         });
 
-        $('#btnImportarErp').on('click', function () {
-            var b = $(this).prop('disabled', true);
-            Swal.fire({ title: 'Importando do ERP...', text: 'Lendo as notas já recebidas pelo ERP Singular. Pode levar alguns minutos na primeira vez.', allowOutsideClick: false, onBeforeOpen: function () { Swal.showLoading(); }, didOpen: function () { Swal.showLoading(); } });
-            ajax({ url: R.importarErp, type: 'POST', timeout: 0 }).done(function (r) {
+        /* importar do ERP: modal com periodo de emissao */
+        function iso(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+        function periodo(dias) {
+            var hoje = new Date();
+            if (dias > 0) { var ini = new Date(); ini.setDate(ini.getDate() - dias); $('#erpDe').val(iso(ini)); $('#erpAte').val(iso(hoje)); }
+            else { $('#erpDe,#erpAte').val(''); }
+            $('.btn-periodo').removeClass('active').filter('[data-dias="' + dias + '"]').addClass('active');
+            dicaErp();
+        }
+        function dicaErp() {
+            var de = $('#erpDe').val(), ate = $('#erpAte').val();
+            $('#erpDica').text(!de && !ate ? 'Sem período: importa tudo o que o ERP tiver (a primeira vez pode levar alguns minutos).' : 'Só entram notas emitidas dentro do período.');
+        }
+        $('#btnImportarErp').on('click', function () { $('#erpErro').hide(); periodo(30); $('#modalErp').modal('show'); });
+        $('.btn-periodo').on('click', function () { periodo(parseInt($(this).data('dias'), 10)); });
+        $('#erpDe,#erpAte').on('change', function () { $('.btn-periodo').removeClass('active'); dicaErp(); });
+        $('#btnErpImportar').on('click', function () {
+            var de = $('#erpDe').val(), ate = $('#erpAte').val();
+            if (de && ate && de > ate) { return $('#erpErro').text('A data inicial não pode ser maior que a final.').show(); }
+            $('#erpErro').hide();
+            var b = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Importando...');
+            ajax({ url: R.importarErp, type: 'POST', timeout: 0, data: { de: de, ate: ate } }).done(function (r) {
+                $('#modalErp').modal('hide');
                 var novas = r.resumos + r.completos;
                 Swal.fire({
                     icon: 'success', title: 'Importação concluída',
-                    html: novas ? 'Novos resumos: <b>' + r.resumos + '</b> · XML completos: <b>' + r.completos + '</b>' : 'Nenhuma nota nova no ERP.'
+                    html: novas ? 'Novos resumos: <b>' + r.resumos + '</b> · XML completos: <b>' + r.completos + '</b>' : 'Nenhuma nota nova no ERP' + ((de || ate) ? ' neste período.' : '.')
                 });
                 carregarStatus(); carregar(1);
-            }).fail(function (xhr) { Swal.fire({ icon: 'error', title: 'Importação não realizada', text: erro(xhr) }); })
-              .always(function () { b.prop('disabled', false); });
+            }).fail(function (xhr) { $('#erpErro').html('<i class="fas fa-exclamation-circle"></i> ' + esc(erro(xhr))).show(); })
+              .always(function () { b.prop('disabled', false).html('<i class="fas fa-download"></i> Importar'); });
         });
 
         /* certificado */

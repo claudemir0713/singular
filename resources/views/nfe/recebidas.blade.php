@@ -75,6 +75,43 @@
     </div>
     <nav><ul class="pagination pagination-sm" id="paginacao"></ul></nav>
 
+    {{-- Importar do ERP --}}
+    <div class="modal fade" id="modalErp" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-database"></i> Importar do ERP Singular</h5>
+                    <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted mb-3">Traz as notas, XMLs e ciências que o ERP já recebeu da SEFAZ. Escolha o período de emissão para não buscar tudo sempre.</p>
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-sm btn-outline-secondary btn-periodo" data-dias="7">Últimos 7 dias</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary btn-periodo" data-dias="30">Últimos 30 dias</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary btn-periodo" data-dias="90">Últimos 90 dias</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary btn-periodo" data-dias="0">Tudo</button>
+                    </div>
+                    <div class="row">
+                        <div class="form-group col-6">
+                            Emissão de:
+                            <input type="date" class="form-control" id="erpDe">
+                        </div>
+                        <div class="form-group col-6">
+                            Emissão até:
+                            <input type="date" class="form-control" id="erpAte">
+                        </div>
+                    </div>
+                    <small class="text-muted" id="erpDica"></small>
+                    <div class="alert alert-danger mt-3 mb-0" id="erpErro" style="display:none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light border" data-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="btnErpImportar"><i class="fas fa-download"></i> Importar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Certificado --}}
     <div class="modal fade" id="modalCertificado" tabindex="-1" role="dialog">
         <div class="modal-dialog" role="document">
