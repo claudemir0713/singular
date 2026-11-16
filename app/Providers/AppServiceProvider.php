@@ -18,10 +18,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register()
     {
-        // Servidor Firebird 2.5: troca a gramática do pacote (que gera sintaxe do Firebird 4+)
-        Connection::resolverFor('firebird', function (PDO|Closure $pdo, string $database = '', string $tablePrefix = '', array $config = []) {
-            return new Firebird25Connection($pdo, $database, $tablePrefix, $config);
-        });
+        // Servidor Firebird 2.5: troca a gramática do pacote (que gera sintaxe do Firebird 4+).
+        // Só se aplica quando o pacote harrygulliford/laravel-firebird está instalado (vendor).
+        if (class_exists(\HarryGulliford\Firebird\FirebirdConnection::class)) {
+            Connection::resolverFor('firebird', function (PDO|Closure $pdo, string $database = '', string $tablePrefix = '', array $config = []) {
+                return new Firebird25Connection($pdo, $database, $tablePrefix, $config);
+            });
+        }
     }
 
     /**
