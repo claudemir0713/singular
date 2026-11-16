@@ -660,6 +660,9 @@ function limparDadosProduto() {
     $('#card_custo_detalhe').html('&nbsp;');
     $('#card_custo_peca').hide();
     $('#card_venda_unitario').html('&nbsp;');
+    $('#card_final_valor').text('0,00');
+    $('#card_final_unitario').html('&nbsp;');
+    $('#card_final_composicao').html('&nbsp;');
     $('#card_custo_dimensoes').hide();
     window.custoPecaInfo = null;
     renderizarAlertasCusto([], '');
@@ -717,8 +720,8 @@ function regraTransicaoDoAno(ano) {
  * e o crédito de IBS/CBS na compra. Com IBS/CBS zerados e ano ≤ 2026, devolve exatamente o cálculo antigo.
  * Os valores vêm dos campos ocultos da tela; "p" permite simular com os valores ainda não aplicados (modal).
  *
- * Premissas: IBS/CBS entram como % do preço de venda (por fora do ICMS/PIS/COFINS, como os demais tributos
- * do divisor) e o crédito = custo de materiais × alíquota IBS+CBS × % creditável.
+ * Premissas: IBS/CBS são cobrados POR FORA do preço (LC 214/2025): somam-se ao preço para dar o valor final do
+ * cliente e não entram no divisor; ICMS/PIS/COFINS/Simples/DIFAL/frete seguem por dentro. Crédito = custo de materiais × alíquota IBS+CBS × % creditável.
  */
 function tributosVendaReforma(custoMateriais, p) {
     p = p || {};
@@ -756,7 +759,9 @@ function tributosVendaReforma(custoMateriais, p) {
         cofins: cofins,
         simples: simples,
         creditoPct: creditoPct,
-        percentual: icms + simples + pis + cofins + total,
+        // % que entra no divisor do preço (IBS/CBS ficam de fora: são cobrados por fora, ver porForaPct)
+        percentual: icms + simples + pis + cofins,
+        porForaPct: total,
         credito: custoMateriais > 0 ? custoMateriais * (total / 100) * (creditoPct / 100) : 0
     };
 }
@@ -1210,6 +1215,7 @@ function atualizarCardCusto(precoVenda, custoTotal) {
     var info = window.custoPecaInfo || {};
 
     atualizarCardVendaUnitario(precoVenda, info);
+    atualizarCardValorFinal(precoVenda, info);
 
     if (temFatorUnidade(info.fator) && info.total > 0) {
         var un = info.unidade ? info.unidade.toLowerCase().replace('2', '²').replace('3', '³') : '';
@@ -1222,6 +1228,41 @@ function atualizarCardCusto(precoVenda, custoTotal) {
         ).show();
     } else {
         $('#card_custo_peca').hide();
+    }
+}
+
+/**
+ * Valor final ao cliente = preço de venda + o que é cobrado por fora (IBS/CBS). DIFAL, frete % e demais
+ * despesas já estão dentro do preço no modelo atual. Sem IBS/CBS no ano, é igual ao Valor Venda.
+ */
+function valorFinalCliente(precoVenda) {
+    var trib = tributosVendaReforma(0);
+    var porFora = precoVenda > 0 ? precoVenda * (trib.porForaPct / 100) : 0;
+
+    return { trib: trib, porFora: porFora, final: precoVenda + porFora };
+}
+
+function atualizarCardValorFinal(precoVenda, info) {
+    var v = valorFinalCliente(precoVenda);
+    var unidade = ((info && info.unidade) || '').toUpperCase();
+    var temUnidade = info && temFatorUnidade(info.fator) && (unidade === 'M2' || unidade === 'M3');
+    var simbolo = unidade === 'M3' ? 'm³' : 'm²';
+
+    $('#card_final_valor').text(formatCurrencyNumber(v.final));
+
+    if (temUnidade && v.final > 0) {
+        $('#card_final_unitario').text('Por ' + simbolo + ': ' + formatCurrencyNumber(v.final / info.fator));
+    } else {
+        $('#card_final_unitario').html('&nbsp;');
+    }
+
+    if (v.porFora > 0) {
+        $('#card_final_composicao').text(
+            'Preço ' + formatCurrencyNumber(precoVenda) + ' + IBS/CBS por fora ' + formatCurrencyNumber(v.porFora) +
+            ' (' + formatPercentNumber(v.trib.porForaPct) + '%)'
+        );
+    } else {
+        $('#card_final_composicao').text('Igual ao Valor Venda — nada cobrado por fora em ' + v.trib.ano);
     }
 }
 
@@ -1877,6 +1918,11 @@ function configurarModalDescontoPreco() {
         $('#memoria_cbs_ano').text('(' + trib.ano + ' · ' + descricaoModoReforma(trib) + ')');
         $('#memoria_ibs_ano').text('(' + trib.ano + ' · ' + trib.regra.fase + ')');
         $('#memoria_credito_ibs_cbs').text('R$ ' + formatCurrencyNumber(trib.credito));
+
+        var valorFinal = valorFinalCliente(precoVenda);
+        $('#memoria_final_preco').text('R$ ' + formatCurrencyNumber(precoVenda));
+        $('#memoria_ibs_cbs_fora').text('R$ ' + formatCurrencyNumber(valorFinal.porFora));
+        $('#memoria_valor_final').text('R$ ' + formatCurrencyNumber(valorFinal.final));
 
         $('#memoria_imposto_venda').text(formatPercentNumber(percentualImpostos) + '%');
         $('#memoria_valor_impostos').text('R$ ' + formatCurrencyNumber(valorImpostos));

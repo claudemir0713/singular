@@ -179,6 +179,21 @@
                                     <strong id="memoria_valor_impostos">R$ 0,00</strong>
                                 </div>
 
+                                <hr>
+
+                                <div class="memoria-linha">
+                                    <span>Preço de venda</span>
+                                    <strong id="memoria_final_preco">R$ 0,00</strong>
+                                </div>
+                                <div class="memoria-linha">
+                                    <span>+ IBS/CBS por fora do preço</span>
+                                    <strong id="memoria_ibs_cbs_fora">R$ 0,00</strong>
+                                </div>
+                                <div class="memoria-linha memoria-total">
+                                    <span>Valor final ao cliente</span>
+                                    <strong id="memoria_valor_final">R$ 0,00</strong>
+                                </div>
+
                             </div>
                         </div>
 

@@ -265,7 +265,7 @@
                 <div class="form-group col-md-12">
                     <div class="row mb-2">
 
-                        <div class="col-md-3">
+                        <div class="col-md">
                             <div class="card card-resumo-preco card-resumo-venda">
                                 <div class="card-body">
                                     <div class="resumo-titulo">
@@ -282,7 +282,25 @@
                             </div>
                         </div>
 
-                        <div class="col-md-3">
+                        <div class="col-md">
+                            <div class="card card-resumo-preco card-resumo-venda" id="card_final_box" style="border-left-color:#17a2b8;">
+                                <div class="card-body">
+                                    <div class="resumo-titulo">
+                                        <i class="fas fa-hand-holding-usd"></i>
+                                        Valor final ao cliente
+                                    </div>
+
+                                    <div class="resumo-valor" id="card_final_valor">
+                                        0,00
+                                    </div>
+
+                                    <div class="resumo-percentual" id="card_final_unitario">&nbsp;</div>
+                                    <div class="resumo-percentual" id="card_final_composicao" style="font-size: 10px;">&nbsp;</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md">
                             <div class="card card-resumo-preco card-resumo-custo">
                                 <div class="card-body">
                                     <div class="resumo-titulo">
@@ -304,7 +322,7 @@
                             </div>
                         </div>
 
-                        <div class="col-md-3">
+                        <div class="col-md">
                             <div class="card card-resumo-preco card-resumo-neutro" id="card_mc_box">
                                 <div class="card-body">
                                     <div class="resumo-titulo">
@@ -323,7 +341,7 @@
                             </div>
                         </div>
 
-                        <div class="col-md-3">
+                        <div class="col-md">
                             <div class="card card-resumo-preco card-resumo-neutro" id="card_ml_box">
                                 <div class="card-body">
                                     <div class="resumo-titulo">

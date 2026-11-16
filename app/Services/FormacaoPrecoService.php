@@ -119,45 +119,195 @@ class FormacaoPrecoService
     }
 
     /**
-     * Regra de transição da reforma tributária do consumo (EC 132/2023, LC 214/2025, LC 227/2026), por ano.
-     * Única fonte da regra: a tela recebe esta tabela e o cálculo de preço (JS) a aplica sobre as alíquotas de
-     * referência informadas em Parâmetros (as alíquotas cheias são fixadas por resolução do Senado e podem mudar).
+     * Transição da reforma tributária do consumo (EC 132/2023, LC 214/2025, LC 227/2026): valores SUGERIDOS por ano.
+     * O usuário pode alterar cada percentual em Parâmetros (gravado em empresa_parametro.ibs_cbs_transicao);
+     * esta tabela é só o ponto de partida e o fallback quando nada foi gravado.
      *
-     *  - cbs_modo / ibs_modo: 'nenhum' | 'teste' (alíquota fixa, compensada, não onera o preço) | 'cheia' | 'parcial'
-     *  - cbs_teste / ibs_teste: alíquota fixa de teste (%), só informativa
-     *  - ibs_fator: fração da alíquota de referência do IBS cobrada no ano (modo parcial/cheia)
-     *  - icms_fator / pis_cofins_fator: fração do ICMS e de PIS/COFINS ainda cobrada no ano
+     *  - cbs_entra / ibs_entra: % da alíquota de referência cobrada no ano (alíquota efetiva = cheia × %)
+     *  - icms_sai / pis_cofins_sai: % do tributo extinto/reduzido no ano (aplicado = tributo × (100 − %))
+     * Em 2026 CBS 0,9% e IBS 0,1% são de teste e compensados com PIS/COFINS: não oneram o preço (entrada 0%).
      */
-    public function regraTransicaoTributaria(): array
+    public function transicaoPadrao(): array
     {
-        $linha = function (int $ano, string $fase, string $cbs, string $ibs, float $ibsFator, float $icmsFator, float $pisCofins, string $texto, float $cbsTeste = 0, float $ibsTeste = 0) {
+        $l = function (int $ano, string $fase, float $cbs, float $ibs, float $icms, float $pc, string $texto) {
             return [
                 'ano' => $ano, 'fase' => $fase,
-                'cbs_modo' => $cbs, 'ibs_modo' => $ibs,
-                'cbs_teste' => $cbsTeste, 'ibs_teste' => $ibsTeste,
-                'ibs_fator' => $ibsFator, 'icms_fator' => $icmsFator, 'pis_cofins_fator' => $pisCofins,
+                'cbs_entra' => $cbs, 'ibs_entra' => $ibs, 'icms_sai' => $icms, 'pis_cofins_sai' => $pc,
                 'texto' => $texto,
             ];
         };
 
-        $tabela = [
-            $linha(2026, 'Ano de teste', 'teste', 'teste', 0, 1, 1,
-                'CBS 0,9% e IBS 0,1% apenas de teste (destaque na nota), compensados com PIS/COFINS: não oneram o preço. ICMS, PIS e COFINS seguem integrais.', 0.9, 0.1),
-            $linha(2027, 'CBS plena', 'cheia', 'teste', 0, 1, 0,
-                'CBS entra plena e PIS/COFINS são extintos. IBS de teste 0,1% (compensado com a CBS). ICMS integral.', 0, 0.1),
-            $linha(2028, 'CBS plena', 'cheia', 'teste', 0, 1, 0,
-                'CBS plena, PIS/COFINS extintos. IBS de teste 0,1% (compensado com a CBS). ICMS integral.', 0, 0.1),
-            $linha(2029, 'Entrada do IBS', 'cheia', 'parcial', 0.10, 0.90, 0, 'IBS a 10% da alíquota de referência; ICMS reduzido para 90%.'),
-            $linha(2030, 'Entrada do IBS', 'cheia', 'parcial', 0.20, 0.80, 0, 'IBS a 20% da alíquota de referência; ICMS reduzido para 80%.'),
-            $linha(2031, 'Entrada do IBS', 'cheia', 'parcial', 0.30, 0.70, 0, 'IBS a 30% da alíquota de referência; ICMS reduzido para 70%.'),
-            $linha(2032, 'Entrada do IBS', 'cheia', 'parcial', 0.40, 0.60, 0, 'IBS a 40% da alíquota de referência; ICMS reduzido para 60%.'),
-            $linha(2033, 'Sistema pleno', 'cheia', 'cheia', 1, 0, 0, 'IBS e CBS plenos; ICMS (e ISS) extintos.'),
+        return [
+            $l(2026, 'Ano de teste', 0, 0, 0, 0, 'CBS 0,9% e IBS 0,1% só de teste (destaque na nota), compensados com PIS/COFINS: não oneram o preço. ICMS, PIS e COFINS integrais.'),
+            $l(2027, 'CBS plena', 100, 0, 0, 100, 'CBS entra plena e PIS/COFINS são extintos. IBS de teste 0,1% compensado com a CBS. ICMS integral.'),
+            $l(2028, 'CBS plena', 100, 0, 0, 100, 'CBS plena, PIS/COFINS extintos. IBS de teste 0,1% compensado com a CBS. ICMS integral.'),
+            $l(2029, 'Entrada do IBS', 100, 10, 10, 100, 'IBS a 10% da alíquota de referência; ICMS reduzido em 10%.'),
+            $l(2030, 'Entrada do IBS', 100, 20, 20, 100, 'IBS a 20% da alíquota de referência; ICMS reduzido em 20%.'),
+            $l(2031, 'Entrada do IBS', 100, 30, 30, 100, 'IBS a 30% da alíquota de referência; ICMS reduzido em 30%.'),
+            $l(2032, 'Entrada do IBS', 100, 40, 40, 100, 'IBS a 40% da alíquota de referência; ICMS reduzido em 40%.'),
+            $l(2033, 'Sistema pleno', 100, 100, 100, 100, 'IBS e CBS plenos; ICMS (e ISS) extintos.'),
         ];
+    }
+
+    /**
+     * Tabela de transição vigente: o que o usuário gravou (JSON) sobre a sugerida. Nunca devolve menos de 8 anos.
+     */
+    public function regraTransicaoTributaria(?string $json = null): array
+    {
+        $linhas = $this->transicaoPadrao();
+        $salvo = $json ? json_decode($json, true) : null;
+
+        if (is_array($salvo)) {
+            foreach ($linhas as &$linha) {
+                $s = $salvo[$linha['ano']] ?? $salvo[(string) $linha['ano']] ?? null;
+                if (is_array($s)) {
+                    foreach (['cbs_entra', 'ibs_entra', 'icms_sai', 'pis_cofins_sai'] as $c) {
+                        if (isset($s[$c]) && is_numeric($s[$c])) {
+                            $linha[$c] = min(100, max(0, (float) $s[$c]));
+                        }
+                    }
+                }
+            }
+            unset($linha);
+        }
 
         return [
-            'antes' => $linha(2025, 'Sem reforma', 'nenhum', 'nenhum', 0, 1, 1, 'Reforma ainda não vigente: ICMS, PIS e COFINS integrais.'),
-            'anos' => $tabela,
+            'antes' => ['ano' => 2025, 'fase' => 'Sem reforma', 'cbs_entra' => 0, 'ibs_entra' => 0, 'icms_sai' => 0, 'pis_cofins_sai' => 0,
+                'texto' => 'Reforma ainda não vigente: ICMS, PIS e COFINS integrais.'],
+            'anos' => $linhas,
         ];
+    }
+
+    /**
+     * DRE da venda do produto (por peça/chapa e por m²/m³). ÚNICA fonte do cálculo da DRE: a tela envia os
+     * parâmetros efetivos (já com a transição aplicada) e o preço; a conferência compara com os cards.
+     * Mesmas fórmulas da memória de cálculo: custo financeiro sobre (custo + tributos líquidos + variáveis);
+     * despesa fixa e IR/CSLL têm financeiro próprio; IBS/CBS são cobrados por fora do preço.
+     *
+     * @param  array<string, mixed>  $d
+     */
+    public function calcularDre(array $d): array
+    {
+        $n = function ($k) use ($d) {
+            return (float) ($d[$k] ?? 0);
+        };
+        $P = $n('preco');
+        $fator = $n('fator_unid') > 0 ? $n('fator_unid') : 1;
+        $mp = $n('custo_materiais');
+        $moi = $n('custo_moi');
+        $moe = $n('custo_moe');
+        $freteRs = $n('vl_frete');
+        $custo = $mp + $moi + $moe + $freteRs;
+
+        $cbs = $n('cbs');
+        $ibs = $n('ibs');
+        $credito = $mp > 0 ? $mp * (($cbs + $ibs) / 100) * ($n('ibs_cbs_credito') / 100) : 0;
+        $taxaEf = pow(1 + $n('taxa_financeira') / 100, $n('prazo') / 30) - 1;
+        $taxaEf = (is_nan($taxaEf) || $taxaEf < 0) ? 0 : $taxaEf;
+
+        $pct = function (float $valor, float $base) {
+            return $base > 0 ? $valor / $base * 100 : 0;
+        };
+        $linhas = [];
+        $add = function (string $tipo, string $rotulo, float $valor, string $formula, ?float $aliq = null) use (&$linhas, $fator) {
+            $linhas[] = ['tipo' => $tipo, 'rotulo' => $rotulo, 'valor' => $valor, 'valor_unid' => $valor / $fator,
+                'aliquota' => $aliq, 'formula' => $formula];
+        };
+        $sobre = function (float $aliq) use ($P) {
+            return $P > 0 ? $P * $aliq / 100 : 0;
+        };
+
+        $vCbs = $sobre($cbs);
+        $vIbs = $sobre($ibs);
+        $recBruta = $P + $vCbs + $vIbs;
+
+        $add('subtotal', 'Receita bruta (valor final ao cliente)', $recBruta, 'Preço de venda + IBS/CBS cobrados por fora');
+        $add('deducao', '(−) CBS por fora', -$vCbs, 'Alíquota efetiva ' . $this->f($cbs) . '% × preço de venda ' . $this->m($P)
+            . ' (cheia ' . $this->f($n('cbs_ref')) . '% × entrada ' . $this->f($n('cbs_entra')) . '%)', $cbs);
+        $add('deducao', '(−) IBS por fora', -$vIbs, 'Alíquota efetiva ' . $this->f($ibs) . '% × preço de venda ' . $this->m($P)
+            . ' (cheia ' . $this->f($n('ibs_ref')) . '% × entrada ' . $this->f($n('ibs_entra')) . '%)', $ibs);
+        $add('subtotal', 'Receita de venda (preço)', $P, 'Receita bruta − IBS/CBS por fora');
+
+        $trib = [
+            ['ICMS', $n('icms')], ['PIS', $n('pis')], ['COFINS', $n('cofins')],
+            ['Simples Nacional', $n('simples')], ['DIFAL', $n('difal')],
+        ];
+        $tribInterno = 0;
+        foreach ($trib as [$nome, $aliq]) {
+            $v = $sobre($aliq);
+            $tribInterno += $v;
+            $add('deducao', '(−) ' . $nome, -$v, $this->f($aliq) . '% × base ' . $this->m($P), $aliq);
+        }
+        $add('credito', '(+) Crédito IBS/CBS na compra', $credito,
+            'Custo de materiais ' . $this->m($mp) . ' × ' . $this->f($cbs + $ibs) . '% × ' . $this->f($n('ibs_cbs_credito')) . '% creditável');
+
+        $recLiq = $P - $tribInterno + $credito;
+        $add('subtotal', 'Receita líquida', $recLiq, 'Preço − tributos sobre a venda + crédito');
+
+        $add('deducao', '(−) Custo de materiais (MP)', -$mp, 'Estrutura do produto');
+        $add('deducao', '(−) Custo operacional MOI', -$moi, 'Processos internos');
+        if ($moe > 0) {
+            $add('deducao', '(−) Custo operacional MOE', -$moe, 'Processos externos');
+        }
+        if ($freteRs > 0) {
+            $add('deducao', '(−) Frete (R$)', -$freteRs, 'Frete em valor informado');
+        }
+        $lucroBruto = $recLiq - $custo;
+        $add('subtotal', 'Lucro bruto', $lucroBruto, 'Receita líquida − custo do produto ' . $this->m($custo));
+
+        $variaveis = 0;
+        foreach ([['Comissão', 'comissao'], ['Frete %', 'frete_percentual'], ['Outros', 'outros']] as [$nome, $k]) {
+            $v = $sobre($n($k));
+            $variaveis += $v;
+            $add('deducao', '(−) ' . $nome, -$v, $this->f($n($k)) . '% × base ' . $this->m($P), $n($k));
+        }
+        // base do financeiro idêntica à memória: custo + (tributos − crédito) + (variáveis + DIFAL)
+        $baseFin = $custo + ($tribInterno - $sobre($n('difal')) - $credito) + ($variaveis + $sobre($n('difal')));
+        $custoFin = $P > 0 ? $baseFin * $taxaEf : 0;
+        $add('deducao', '(−) Taxa financeira (variáveis)', -$custoFin,
+            'Taxa ' . $this->f($n('taxa_financeira')) . '% a.m., prazo ' . (int) $n('prazo') . ' dias → efetiva ' . $this->f($taxaEf * 100)
+            . '% × base ' . $this->m($baseFin));
+
+        $mc = $lucroBruto - $variaveis - $custoFin;
+        $add('subtotal', 'Margem de contribuição (MC)', $mc, 'Lucro bruto − comissão − frete − outros − taxa financeira');
+
+        $despFixa = $sobre($n('despesa_fixa'));
+        $finDF = $despFixa * $taxaEf;
+        $add('deducao', '(−) Despesa fixa', -$despFixa, $this->f($n('despesa_fixa')) . '% × base ' . $this->m($P), $n('despesa_fixa'));
+        $add('deducao', '(−) Taxa financeira s/ despesa fixa', -$finDF, 'Despesa fixa × taxa efetiva ' . $this->f($taxaEf * 100) . '%');
+        $rb = $mc - $despFixa - $finDF;
+        $add('subtotal', 'Resultado bruto', $rb, 'MC − despesa fixa − financeiro');
+
+        $ir = $rb > 0 ? $rb * $n('ir_csll') / 100 : 0;
+        $finIr = $ir * $taxaEf;
+        $add('deducao', '(−) IR/CSLL', -$ir, $this->f($n('ir_csll')) . '% × resultado bruto ' . $this->m($rb) . ($rb > 0 ? '' : ' (sem lucro: não incide)'), $n('ir_csll'));
+        $add('deducao', '(−) Taxa financeira s/ IR/CSLL', -$finIr, 'IR/CSLL × taxa efetiva ' . $this->f($taxaEf * 100) . '%');
+        $ml = $rb - $ir - $finIr;
+        $add('total', 'Lucro líquido (ML)', $ml, 'Resultado bruto − IR/CSLL − financeiro');
+
+        foreach ($linhas as &$l) {
+            $l['percentual'] = $pct($l['valor'], $recBruta);
+        }
+        unset($l);
+
+        return [
+            'linhas' => $linhas,
+            'fator_unid' => $fator,
+            'unidade' => $d['unidade'] ?? null,
+            'base_percentual' => 'Receita bruta',
+            'ano' => (int) ($d['ano'] ?? 0),
+            'resumo' => ['preco' => $P, 'receita_bruta' => $recBruta, 'mc' => $mc, 'resultado_bruto' => $rb, 'ml' => $ml, 'credito' => $credito],
+        ];
+    }
+
+    private function f(float $v): string
+    {
+        return number_format($v, 2, ',', '.');
+    }
+
+    private function m(float $v): string
+    {
+        return 'R$ ' . number_format($v, 2, ',', '.');
     }
 
     /**
