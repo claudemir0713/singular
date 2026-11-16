@@ -70,6 +70,7 @@ Route::group(['middleware' => ['auth']], function () {
     /********************************** vendas ***************************************************************/
     Route::group(['namespace' => 'vendas'], function () {
         Route::get('vendas', [vendasController::class, 'listAll'])->name('vendas.listAll');
+        Route::get('vendas/itens', [vendasController::class, 'itens'])->name('vendas.itens');
         Route::get('vendas/papeleta', [vendasController::class, 'papeleta'])->name('vendas.papeleta');
         Route::post('vendas/papeletaDados', [vendasController::class, 'papeletaDados'])->name('vendas.papeletaDados');
         Route::post('vendas/atualiza_papeleta', [vendasController::class, 'atualiza_papeleta'])->name('vendas.atualiza_papeleta');

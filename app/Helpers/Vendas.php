@@ -6,12 +6,31 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class Vendas {
-    public static function vendas($dataI,$dataF,$cliente,$vendedor,$nf,$nivel,$rep_cod) {
+    public static function vendas($dataI,$dataF,$cliente,$vendedor,$nf,$nivel,$rep_cod,array $extra = [],$itemDoc = null) {
         $rep_cod1 = '';
         if($nivel=='restrito'){
             $rep_cod1 = " AND REP.PART_CODIGO  = $rep_cod";
         }
-        $cliente    = " AND CLIENTE LIKE '$cliente%'";
+        // Filtros extras (já escapados pelo controller) aplicados sobre as linhas de item
+        $filtroExtra = '';
+        $esc = function ($v) { return strtoupper(str_replace("'", "''", trim((string) $v))); };
+        if (!empty($extra['tipo']) && in_array($extra['tipo'], ['NF', 'PD'], true)) {
+            $filtroExtra .= " AND TIPO_RECEITA = '" . $extra['tipo'] . "'";
+        }
+        if (!empty($extra['uf'])) {
+            $filtroExtra .= " AND UPPER(ESTADO) = '" . $esc($extra['uf']) . "'";
+        }
+        if (!empty($extra['municipio'])) {
+            $filtroExtra .= " AND UPPER(MUNICIPIO) LIKE '%" . $esc($extra['municipio']) . "%'";
+        }
+        if (!empty($extra['forma'])) {
+            $filtroExtra .= " AND UPPER(FORMA_DE_PAGTO) LIKE '%" . $esc($extra['forma']) . "%'";
+        }
+        if (!empty($extra['produto'])) {
+            $prod = $esc($extra['produto']);
+            $filtroExtra .= " AND (UPPER(PRODUTO) LIKE '%" . $prod . "%' OR CAST(COD_PRODUTO AS VARCHAR(30)) = '" . $prod . "')";
+        }
+        $cliente    = " AND CLIENTE LIKE '%$cliente%'";
         $vendedor   = " AND VENDEDOR LIKE '%$vendedor%'";
         $data_nf    = " AND NF.NF_DT_EMISSAO BETWEEN '$dataI' AND '$dataF'";
         $data_dav   = " AND DAV_DATA_EMISSAO BETWEEN '$dataI' AND '$dataF'";
@@ -415,6 +434,7 @@ class Vendas {
             where 1 = 1
             $cliente
             $vendedor
+            $filtroExtra
 
             GROUP BY
                 ORIGEM
@@ -437,6 +457,19 @@ class Vendas {
                 , FORMA_DE_PAGTO
                 , FRETE_DAV
         ";
+        if ($itemDoc) {
+            // Modo auditoria: devolve os itens (produtos) de um documento, sem agrupar
+            $ini = strpos($sql, 'FROM(') + 5;
+            $fim = strrpos($sql, ')vendas');
+            $interno = substr($sql, $ini, $fim - $ini);
+            $t = str_replace("'", "''", (string) ($itemDoc['tipo'] ?? ''));
+            $d = str_replace("'", "''", trim((string) ($itemDoc['doc'] ?? '')));
+            $c = (int) ($itemDoc['cli'] ?? 0);
+            $sql = "SELECT TIPO_RECEITA, DOCUMENTO, COD_PRODUTO, PRODUTO, UN_MEDIDA, QUANTIDADE, FAT_BRUTO, FAT_BRUTO_2, DESCONTO, ACRESCIMO, IPI
+                    FROM(" . $interno . ")vendas
+                    WHERE TIPO_RECEITA = '$t' AND TRIM(CAST(DOCUMENTO AS VARCHAR(40))) = '$d' AND COALESCE(COD_CLIENTE,0) = $c
+                    ORDER BY PRODUTO";
+        }
         // dd($sql);
         $vendas = DB::connection(env('APP_NAME'))->select($sql);
         return $vendas;

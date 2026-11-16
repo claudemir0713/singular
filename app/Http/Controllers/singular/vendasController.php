@@ -24,17 +24,71 @@ class vendasController extends Controller
 
         $dataI      = $request->dtI;
         $dataF      = $request->dtF;
-        if(!$dataI){$dataI = date('Y-m-d');};
+        if(!$dataI){$dataI = date('Y-m-01');};
         if(!$dataF){$dataF = date('Y-m-d');};
-        $vendedor   = strtoupper($request->vendedor);
-        $cliente    = strtoupper($request->cliente);
+        $dateForm['dtI'] = $dataI;
+        $dateForm['dtF'] = $dataF;
+        $esc        = function ($v) { return strtoupper(str_replace("'", "''", trim((string) $v))); };
+        $vendedor   = $esc($request->vendedor);
+        $cliente    = $esc($request->cliente);
         $nf         = $request->nf;
+        $extra      = [
+            'tipo'      => in_array($request->tipo, ['NF', 'PD'], true) ? $request->tipo : '',
+            'uf'        => $esc($request->uf),
+            'municipio' => $esc($request->municipio),
+            'forma'     => $esc($request->forma),
+            'produto'   => $esc($request->produto),
+        ];
 
         $nivel = Auth::user()->nivel;
         $rep_cod = Auth::user()->part_codigo;
 
-        $vendas = Vendas::vendas($dataI,$dataF,$cliente,$vendedor,$nf,$nivel,$rep_cod);
-        return view('vendas.listAll',compact('vendas','dateForm'));
+        $vendas = Vendas::vendas($dataI,$dataF,$cliente,$vendedor,$nf,$nivel,$rep_cod,$extra);
+
+        $formas = [];
+        $vendedores = [];
+        try {
+            $conn = DB::connection(env('APP_NAME'));
+            $formas = array_map(function ($r) { return trim($r->CPA_DESCRICAO); }, $conn->select("SELECT CPA_DESCRICAO FROM CONDICOES_PAGAMENTO WHERE CPA_DESCRICAO IS NOT NULL ORDER BY 1"));
+            if ($nivel != 'restrito') {
+                $vendedores = array_map(function ($r) { return trim($r->PART_NOME); }, $conn->select("SELECT DISTINCT PART_NOME FROM PARTICIPANTE WHERE PART_REPRESENTANTE_CODIGO IS NOT NULL AND PART_NOME IS NOT NULL ORDER BY 1"));
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+        return view('vendas.listAll',compact('vendas','dateForm','formas','vendedores'));
+    }
+
+    /** Itens (produtos) de um documento do relatório de vendas, para o modal de auditoria. */
+    public function itens(Request $request){
+        $tipo = $request->tipo === 'PD' ? 'PD' : 'NF';
+        $data = $request->data ? date('Y-m-d', strtotime($request->data)) : date('Y-m-d');
+        $dataF = date('Y-m-d', strtotime($data . ' +1 day'));
+        $nivel = Auth::user()->nivel;
+        $rep_cod = Auth::user()->part_codigo;
+        try {
+            $rows = collect(Vendas::vendas($data,$dataF,'','','',$nivel,$rep_cod,[],['tipo' => $tipo, 'doc' => $request->doc, 'cli' => $request->cli]));
+        } catch (\Throwable $e) {
+            report($e);
+            return response()->json(['success' => false, 'message' => 'Não foi possível carregar os itens.'], 500);
+        }
+        $itens = $rows->map(function ($r) {
+            $qtd = (float) $r->QUANTIDADE;
+            $base = (float) $r->FAT_BRUTO + (float) $r->FAT_BRUTO_2;
+            return [
+                'codigo' => trim((string) $r->COD_PRODUTO),
+                'produto' => trim((string) $r->PRODUTO),
+                'un' => trim((string) $r->UN_MEDIDA),
+                'qtd' => $qtd,
+                'unitario' => $qtd ? $base / $qtd : 0,
+                'fat1' => (float) $r->FAT_BRUTO,
+                'fat2' => (float) $r->FAT_BRUTO_2,
+                'desconto' => (float) $r->DESCONTO,
+                'ipi' => (float) $r->IPI,
+                'total' => $base + (float) $r->IPI,
+            ];
+        })->values();
+        return response()->json(['success' => true, 'itens' => $itens]);
     }
 
     public function papeleta()
