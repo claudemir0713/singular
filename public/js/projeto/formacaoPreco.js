@@ -414,8 +414,8 @@ function preencherDadosCustoProduto(data, codigoDigitado) {
     $('#unid_med').val(data.unid_med || '');
     $('#tipo_mp').val(data.tipo_mp || '');
 
-    $('#custo_materiais').val(formatCurrencyNumber(custoMateriais));
-    $('#custo_moi').val(formatCurrencyNumber(custoMoi));
+    $('#custo_materiais').val(formatCurrencyNumber(custoMateriais)).data('raw', custoMateriais);
+    $('#custo_moi').val(formatCurrencyNumber(custoMoi)).data('raw', custoMoi);
     $('#custo_moe').val(formatCurrencyNumber(0));
     $('#vl_frete').val(formatCurrencyNumber(0));
 
@@ -642,8 +642,8 @@ function limparDadosProduto() {
     $('#unid_med').val('');
     $('#tipo_mp').val('');
 
-    $('#custo_materiais').val(formatCurrencyNumber(0));
-    $('#custo_moi').val(formatCurrencyNumber(0));
+    $('#custo_materiais').val(formatCurrencyNumber(0)).removeData('raw');
+    $('#custo_moi').val(formatCurrencyNumber(0)).removeData('raw');
     $('#custo_moe').val(formatCurrencyNumber(0));
     $('#vl_frete').val(formatCurrencyNumber(0));
 
@@ -877,10 +877,10 @@ function montarResultadoPorPrecoInformado(precoVenda, custoTotal) {
 function atualizarPrecoVenda() {
     atualizarEstadoFormaCalculo(false);
 
-    var custoMateriais = parseBRNumber($('#custo_materiais').val());
-    var custoMoi = parseBRNumber($('#custo_moi').val());
-    var custoMoe = parseBRNumber($('#custo_moe').val());
-    var freteValor = parseBRNumber($('#vl_frete').val());
+    var custoMateriais = lerCusto('#custo_materiais');
+    var custoMoi = lerCusto('#custo_moi');
+    var custoMoe = lerCusto('#custo_moe');
+    var freteValor = lerCusto('#vl_frete');
 
     var custoTotal = custoMateriais + custoMoi + custoMoe + freteValor;
 
@@ -1039,10 +1039,10 @@ function temFatorUnidade(fator) {
 }
 
 function atualizarCardCusto(precoVenda, custoTotal) {
-    var materiais = parseBRNumber($('#custo_materiais').val());
-    var moi = parseBRNumber($('#custo_moi').val());
-    var moe = parseBRNumber($('#custo_moe').val());
-    var frete = parseBRNumber($('#vl_frete').val());
+    var materiais = lerCusto('#custo_materiais');
+    var moi = lerCusto('#custo_moi');
+    var moe = lerCusto('#custo_moe');
+    var frete = lerCusto('#vl_frete');
     var unidade = ($('#unid_med').val() || '').trim();
 
     var partes = [
@@ -1211,10 +1211,10 @@ function coletarDadosFormacaoPreco() {
         unid_med: $('#unid_med').val(),
         tipo_mp: $('#tipo_mp').val(),
 
-        custo_materiais: parseBRNumber($('#custo_materiais').val()),
-        custo_moi: parseBRNumber($('#custo_moi').val()),
-        custo_moe: parseBRNumber($('#custo_moe').val()),
-        vl_frete: parseBRNumber($('#vl_frete').val()),
+        custo_materiais: lerCusto('#custo_materiais'),
+        custo_moi: lerCusto('#custo_moi'),
+        custo_moe: lerCusto('#custo_moe'),
+        vl_frete: lerCusto('#vl_frete'),
         custo_total: parseBRNumber($('#vlr_custo_material_operacional').text()),
 
         prazo: parseInt(parseBRNumber($('#prazo').val())) || 0,
@@ -1249,6 +1249,22 @@ function coletarDadosFormacaoPreco() {
         valor_lucro: parseBRNumber($('#vlr_liquido').text()),
         percentual_lucro: parseBRNumber($('#prec_liquido').text())
     };
+}
+
+/**
+ * Lê um campo de custo. Se ele ainda mostra o valor carregado (não foi editado),
+ * usa o valor exato guardado, evitando erro de arredondamento de 2 casas.
+ */
+function lerCusto(seletor) {
+    var campo = $(seletor);
+    var bruto = campo.data('raw');
+    var texto = campo.val();
+
+    if (bruto !== undefined && bruto !== null && texto === formatCurrencyNumber(bruto)) {
+        return parseFloat(bruto);
+    }
+
+    return parseBRNumber(texto);
 }
 
 function parseBRNumber(value) {
@@ -1573,10 +1589,10 @@ function configurarModalDescontoPreco() {
     }
 
     function preencherModalMemoriaCalculo() {
-        var custoMateriais = parseBRNumber($('#custo_materiais').val());
-        var custoMoi = parseBRNumber($('#custo_moi').val());
-        var custoMoe = parseBRNumber($('#custo_moe').val());
-        var freteValor = parseBRNumber($('#vl_frete').val());
+        var custoMateriais = lerCusto('#custo_materiais');
+        var custoMoi = lerCusto('#custo_moi');
+        var custoMoe = lerCusto('#custo_moe');
+        var freteValor = lerCusto('#vl_frete');
 
         var custoProcessos = custoMoi + custoMoe;
         var custoTotal = custoMateriais + custoProcessos + freteValor;

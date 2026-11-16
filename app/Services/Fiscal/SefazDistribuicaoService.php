@@ -629,6 +629,55 @@ class SefazDistribuicaoService
         return [$tmp, $n];
     }
 
+    /**
+     * Traz do ERP Singular (Firebird: NFE_DESTINADA_CHAVE / DFE_PARAMETROS) o que ele ja recebeu da SEFAZ:
+     * resumos, XMLs completos, ciencia e o ultimo NSU. Assim a consulta daqui continua de onde o ERP parou
+     * (sem recomecar do NSU zero, que causa o bloqueio 656). Idempotente: NSU ja importado e ignorado.
+     * @param callable|null $progresso function(int $lidos)
+     * @return array{lidos:int,resumos:int,completos:int,ignorados:int,ciencias:int,nsu:string}
+     */
+    public function importarDoErp(?callable $progresso = null): array
+    {
+        $erp = DB::connection(env('ERP_CONNECTION', env('APP_NAME')));
+        $db = $this->db();
+        $r = ['lidos' => 0, 'resumos' => 0, 'completos' => 0, 'ignorados' => 0, 'ciencias' => 0, 'nsu' => '000000000000000'];
+        $ciencia = [];
+        $ultimo = '';
+        do {
+            $sql = 'select first 200 NFE_DES_NSU, NFE_DES_CHAVE, NFE_DES_SITUACAO_MANIFESTACAO, NFE_DES_XML from NFE_DESTINADA_CHAVE'
+                . ' where NFE_DES_XML is not null and NFE_DES_NSU > ? order by NFE_DES_NSU';
+            $lote = $erp->select($sql, [$ultimo]);
+            foreach ($lote as $l) {
+                $nsu = str_pad($this->digitos($l->NFE_DES_NSU), 15, '0', STR_PAD_LEFT);
+                $ultimo = $l->NFE_DES_NSU;
+                $xml = $l->NFE_DES_XML;
+                if (is_resource($xml)) { $xml = stream_get_contents($xml); }
+                $r['lidos']++;
+                if ($nsu > $r['nsu']) { $r['nsu'] = $nsu; }
+                if ((string) $xml === '') { continue; }
+                $novos = ['resNFe' => 0, 'procNFe' => 0, 'eventos' => 0];
+                $this->gravarDocumento($nsu, (string) $xml, $novos);
+                $r['resumos'] += $novos['resNFe']; $r['completos'] += $novos['procNFe'];
+                if (!array_sum($novos)) { $r['ignorados']++; }
+                if ((int) $l->NFE_DES_SITUACAO_MANIFESTACAO === 1 && preg_match('/^\d{44}$/', (string) $l->NFE_DES_CHAVE)) { $ciencia[$l->NFE_DES_CHAVE] = true; }
+            }
+            if ($progresso) { call_user_func($progresso, $r['lidos']); }
+        } while (count($lote) === 200);
+
+        foreach (array_chunk(array_keys($ciencia), 500) as $ch) {
+            $r['ciencias'] += $db->table('nfe_distribuicao')->whereIn('chave', $ch)->whereNull('manifestacao')->update(['manifestacao' => '210210', 'manifestada_em' => now()]);
+        }
+        // ponteiro de NSU: nunca recua; a consulta seguinte parte do ultimo NSU que o ERP ja leu
+        $par = $erp->selectOne('select DFE_PROXIMO_NSU, DFE_NSU_MAXIMO from DFE_PARAMETROS');
+        $nsuErp = $par ? str_pad($this->digitos($par->DFE_PROXIMO_NSU), 15, '0', STR_PAD_LEFT) : '000000000000000';
+        if ($nsuErp > $r['nsu']) { $r['nsu'] = $nsuErp; }
+        $c = $this->ativo();
+        if ($c && $r['nsu'] > $c->ultimo_nsu) {
+            $db->table('empresa_certificado')->where('id', $c->id)->update(['ultimo_nsu' => $r['nsu'], 'updated_at' => now()]);
+        }
+        return $r;
+    }
+
     /** Conteudo do XML completo arquivado para uma chave. */
     public function xmlCompleto(string $chave): ?string
     {
