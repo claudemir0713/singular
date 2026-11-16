@@ -33,6 +33,7 @@ class DashboardService
         $clientes = $this->obterMaioresClientes($filtros);
         $produtos = $this->obterTopProdutos($filtros);
         $projecaoRecebimentos = $this->obterProjecaoRecebimentos($filtros, (float) ($comercial->VALOR_PEDIDOS_PENDENTES ?? 0));
+        $projecaoPagamentos = $this->obterProjecaoPagamentos($filtros);
 
         return [
             'filtros' => $filtros,
@@ -57,6 +58,7 @@ class DashboardService
             'clientes' => $clientes,
             'produtos' => $produtos,
             'projecao_recebimentos' => $projecaoRecebimentos,
+            'projecao_pagamentos' => $projecaoPagamentos,
             'memoria_calculo' => $this->montarMemoriaCalculo(
                 $filtros,
                 $financeiro,
@@ -236,6 +238,41 @@ class DashboardService
                     . (!empty($proj['meses_descartados']) ? ' Meses atípicos descartados do histórico: ' . implode(', ', $proj['meses_descartados']) . '.' : '');
                 break;
 
+            case 'proj_pagar':
+                $cenarios = ['conservador' => 'Conservador', 'base' => 'Base', 'otimista' => 'Otimista'];
+                $cen = isset($filtros['cenario']) && isset($cenarios[$filtros['cenario']]) ? $filtros['cenario'] : 'base';
+                $abate = false;
+                $proj = $this->obterProjecaoPagamentos($filtros);
+                $titulo = 'Saídas projetadas — cenário ' . strtolower($cenarios[$cen]) . ($abate ? ' (líquidas dos pedidos pendentes)' : '');
+                if (empty($proj) || empty($proj['disponivel'])) {
+                    $nota = !empty($proj['motivo']) ? $proj['motivo'] : 'Projeção indisponível.';
+                    $colunas = [$texto('MES', 'Mês')];
+                    break;
+                }
+                $mesesPt = ['', 'jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+                $linhas = collect($proj['meses'])->map(function ($m) use ($cen, $mesesPt, $abate) {
+                    $l = new \stdClass();
+                    $l->MES = $mesesPt[(int) substr($m['MES'], 5, 2)] . '/' . substr($m['MES'], 0, 4);
+                    $l->INDICE = $m['INDICE'];
+                    $l->FRACAO = $m['FRACAO'];
+                    $l->BRUTO = $m['BRUTO_' . strtoupper($cen)];
+                    $l->CARTEIRA = $m['CARTEIRA'];
+                    $l->PEDIDOS = $abate ? $m['PEDIDOS_' . strtoupper($cen)] : 0;
+                    $l->VALOR = $abate ? $m['LIQUIDO_' . strtoupper($cen)] : $m['PROJETADO_' . strtoupper($cen)];
+                    return $l;
+                });
+                $colunas = [$texto('MES', 'Mês'), $num('INDICE', 'Índice sazonal'), $num('FRACAO', 'Fração do mês'), $moeda('BRUTO', 'Projeção bruta'), $moeda('CARTEIRA', 'Já em carteira')];
+                if ($abate) {
+                    $colunas[] = $moeda('PEDIDOS', 'Pedidos pendentes (abatidos)');
+                }
+                $colunas[] = $moeda('VALOR', 'Saída projetada');
+                $nota = 'Nível mensal (' . strtolower($cenarios[$cen]) . '): R$ ' . number_format($proj['niveis'][$cen], 2, ',', '.')
+                    . ' — pagamentos (contas a pagar pagas) dos últimos meses válidos; conservador = menor, base = mediana, otimista = média dos 3 maiores dos 6 últimos. '
+                    . 'Projeção bruta = nível × índice sazonal × fração do mês no período; saída projetada = projeção bruta − o que já está em carteira (contas a pagar e previsões a pagar), nunca negativa.'
+                    . ($abate ? ' Os pedidos pendentes (R$ ' . number_format($proj['pedidos_pendentes'], 2, ',', '.') . '), que ainda não geram título, são abatidos dos primeiros meses para não contar duas vezes.' : '')
+                    . (!empty($proj['meses_descartados']) ? ' Meses atípicos descartados do histórico: ' . implode(', ', $proj['meses_descartados']) . '.' : '');
+                break;
+
             case 'clientes_atendidos':
                 $titulo = 'Clientes atendidos';
                 list($where, $bind) = $this->montarFiltroDav($filtros, 'D');
@@ -374,6 +411,161 @@ class DashboardService
         $carteira = [];
         $dup = $this->selecionar("SELECT EXTRACT(YEAR FROM FC.CON_DT_VENCIMENTO) AS ANO, EXTRACT(MONTH FROM FC.CON_DT_VENCIMENTO) AS MES, SUM(FC.CON_VALOR_CORRIGIDO) AS VALOR FROM FIN_CONTAS FC WHERE FC.CON_TIPO = 0 AND FC.CON_PREVISAO = 0 AND FC.CON_SITUACAO IN (0, 1) AND COALESCE(FC.CON_VALOR_CORRIGIDO, 0) > 0 AND CAST(FC.CON_DT_VENCIMENTO AS DATE) BETWEEN ? AND ? GROUP BY 1, 2", [$inicio->format('Y-m-d'), $fim->format('Y-m-d')]);
         $chq = $this->selecionar("SELECT EXTRACT(YEAR FROM CHQ.CHQ_BOM_PARA) AS ANO, EXTRACT(MONTH FROM CHQ.CHQ_BOM_PARA) AS MES, SUM(CHQ.CHQ_VALOR) AS VALOR FROM CHEQUE CHQ WHERE CHQ.CHQ_TERC = 0 AND CHQ.CHQ_SITUACAO = 0 AND COALESCE(CHQ.CHQ_VALOR, 0) > 0 AND EXISTS (SELECT 1 FROM FIN_CONTAS_CHEQUES FCQ INNER JOIN FIN_CONTAS FC ON FC.CON_CODIGO = FCQ.CON_CODIGO WHERE FCQ.CHQ_CODIGO = CHQ.CHQ_CODIGO AND FC.CON_TIPO = 0) AND CAST(CHQ.CHQ_BOM_PARA AS DATE) BETWEEN ? AND ? GROUP BY 1, 2", [$inicio->format('Y-m-d'), $fim->format('Y-m-d')]);
+        foreach (array_merge($dup, $chq) as $l) {
+            $k = sprintf('%04d-%02d', $l->ANO, $l->MES);
+            $carteira[$k] = ($carteira[$k] ?? 0) + (float) $l->VALOR;
+        }
+
+        // 4. projeção mês a mês
+        $meses = [];
+        $totais = ['conservador' => 0.0, 'base' => 0.0, 'otimista' => 0.0];
+        $totaisLiquidos = $totais;
+        $restantePedidos = ['conservador' => $pedidosPendentes, 'base' => $pedidosPendentes, 'otimista' => $pedidosPendentes];
+        $cursor = $inicio->copy()->startOfMonth();
+        while ($cursor->lte($fim)) {
+            $iniMes = $cursor->copy()->startOfDay()->max($inicio->copy()->startOfDay());
+            $fimMes = $cursor->copy()->endOfMonth()->startOfDay()->min($fim->copy()->startOfDay());
+            $fracao = (((int) round($iniMes->diffInDays($fimMes))) + 1) / $cursor->daysInMonth;
+            $idx = $indiceMes((int) $cursor->month);
+            $chave = $cursor->format('Y-m');
+            $cart = $carteira[$chave] ?? 0.0;
+            $linha = ['MES' => $chave, 'INDICE' => round($idx, 4), 'FRACAO' => round($fracao, 4), 'CARTEIRA' => $cart];
+            foreach ($niveis as $cen => $nivel) {
+                $bruto = $nivel * $idx * $fracao;
+                $liquido = max(0, $bruto - $cart);
+                $linha['BRUTO_' . strtoupper($cen)] = $bruto;
+                $linha['PROJETADO_' . strtoupper($cen)] = $liquido;
+                $totais[$cen] += $liquido;
+                // pedidos pendentes (ainda sem título) abatem a projeção dos primeiros meses
+                $abatido = min($restantePedidos[$cen], $liquido);
+                $restantePedidos[$cen] -= $abatido;
+                $linha['PEDIDOS_' . strtoupper($cen)] = $abatido;
+                $linha['LIQUIDO_' . strtoupper($cen)] = $liquido - $abatido;
+                $totaisLiquidos[$cen] += $liquido - $abatido;
+            }
+            $meses[] = $linha;
+            $cursor->addMonthNoOverflow();
+        }
+
+        return [
+            'disponivel' => true,
+            'motivo' => null,
+            'cenarios' => $totais,
+            'cenarios_liquidos' => $totaisLiquidos,
+            'pedidos_pendentes' => $pedidosPendentes,
+            'niveis' => $niveis,
+            'meses' => $meses,
+            'carteira' => array_sum($carteira),
+            'historico' => $ultimos,
+            'meses_validos' => count($validos),
+            'meses_descartados' => array_keys(array_diff_key($serie, $validos)),
+        ];
+    }
+
+    /**
+     * Projeção de saídas (pagamentos) para os meses do período financeiro que ainda não
+     * têm recebíveis suficientes em carteira.
+     *
+     * Método:
+     *  1. Histórico: pagamentos mensais (contas a pagar pagas) dos últimos 24 meses fechados, descartando
+     *     meses atípicos (< 50% ou > 200% da mediana).
+     *  2. Nível mensal por cenário, sobre os 6 últimos meses válidos:
+     *     conservador = menor, base = mediana, otimista = média dos 3 maiores.
+     *  3. Sazonalidade leve: índice do mês = valor do mês / média do próprio ano, média entre os anos,
+     *     suavizado em 50% e limitado a 0,70–1,30.
+     *  4. Projeção do mês = nível × índice × fração do mês dentro do período (a partir de amanhã).
+     *  5. Sem dupla contagem: desconta o que já está em carteira (contas a pagar e previsões a pagar) vencendo no mesmo
+     *     trecho do mês; nunca fica negativa.
+     */
+    public function obterProjecaoPagamentos(array $filtros)
+    {
+        $filtros = $this->normalizarFiltros($filtros);
+        $vazio = ['disponivel' => false, 'motivo' => null, 'cenarios' => ['conservador' => 0, 'base' => 0, 'otimista' => 0], 'cenarios_liquidos' => ['conservador' => 0, 'base' => 0, 'otimista' => 0], 'pedidos_pendentes' => 0, 'niveis' => ['conservador' => 0, 'base' => 0, 'otimista' => 0], 'meses' => [], 'carteira' => 0, 'historico' => []];
+
+        if (!empty($filtros['usuario_restrito'])) {
+            return null;
+        }
+        if (!empty($filtros['rep_codigo']) || !empty($filtros['part_codigo'])) {
+            $vazio['motivo'] = 'Projeção indisponível com filtro de representante ou cliente.';
+            return $vazio;
+        }
+
+        $hoje = Carbon::today();
+        $inicio = Carbon::parse($filtros['vencimento_inicial']);
+        if ($inicio->lte($hoje)) {
+            $inicio = $hoje->copy()->addDay();
+        }
+        $fim = Carbon::parse($filtros['vencimento_final']);
+        if ($fim->lt($inicio)) {
+            $vazio['disponivel'] = true;
+            $vazio['motivo'] = 'O período financeiro não tem datas futuras.';
+            return $vazio;
+        }
+
+        $pedidosPendentes = 0.0; // saídas não abatem pedidos pendentes
+
+        // 1. histórico mensal de recebimentos
+        $primeiroMesAtual = $hoje->copy()->startOfMonth();
+        $janela = $primeiroMesAtual->copy()->subMonths(24)->format('Y-m-d');
+        $linhas = $this->selecionar("SELECT EXTRACT(YEAR FROM FC.CON_DT_PAGAMENTO) AS ANO, EXTRACT(MONTH FROM FC.CON_DT_PAGAMENTO) AS MES, SUM(FC.CON_VALOR_TOTAL_PAGO) AS VALOR FROM FIN_CONTAS FC WHERE FC.CON_TIPO = 1 AND FC.CON_PREVISAO = 0 AND FC.CON_VALOR_TOTAL_PAGO > 0 AND CAST(FC.CON_DT_PAGAMENTO AS DATE) >= ? AND CAST(FC.CON_DT_PAGAMENTO AS DATE) < ? GROUP BY 1, 2 ORDER BY 1, 2", [$janela, $primeiroMesAtual->format('Y-m-d')]);
+
+        $serie = [];
+        foreach ($linhas as $l) {
+            $serie[sprintf('%04d-%02d', $l->ANO, $l->MES)] = (float) $l->VALOR;
+        }
+        if (count($serie) < 3) {
+            $vazio['disponivel'] = true;
+            $vazio['motivo'] = 'Histórico insuficiente para projetar.';
+            return $vazio;
+        }
+
+        $valores = array_values($serie);
+        sort($valores);
+        $n = count($valores);
+        $mediana = $n % 2 ? $valores[intdiv($n, 2)] : ($valores[$n / 2 - 1] + $valores[$n / 2]) / 2;
+        $validos = array_filter($serie, function ($v) use ($mediana) {
+            return $v >= 0.5 * $mediana && $v <= 2 * $mediana;
+        });
+        if (count($validos) < 3) {
+            $validos = $serie;
+        }
+
+        // 2. nível por cenário (6 últimos meses válidos)
+        $ultimos = array_slice($validos, -6, 6, true);
+        $v6 = array_values($ultimos);
+        sort($v6);
+        $c = count($v6);
+        $niveis = [
+            'conservador' => $v6[0],
+            'base' => $c % 2 ? $v6[intdiv($c, 2)] : ($v6[$c / 2 - 1] + $v6[$c / 2]) / 2,
+            'otimista' => array_sum(array_slice($v6, -3)) / min(3, $c),
+        ];
+
+        // 3. sazonalidade leve (índice do mês dentro do próprio ano)
+        $porAno = [];
+        foreach ($validos as $chave => $v) {
+            $porAno[substr($chave, 0, 4)][] = $v;
+        }
+        $mediaAno = array_map(function ($a) { return array_sum($a) / count($a); }, $porAno);
+        $indices = [];
+        foreach ($validos as $chave => $v) {
+            $ano = substr($chave, 0, 4);
+            if ($mediaAno[$ano] > 0) {
+                $indices[(int) substr($chave, 5, 2)][] = $v / $mediaAno[$ano];
+            }
+        }
+        $indiceMes = function ($mes) use ($indices) {
+            if (empty($indices[$mes])) {
+                return 1.0;
+            }
+            $bruto = array_sum($indices[$mes]) / count($indices[$mes]);
+            return max(0.7, min(1.3, 1 + 0.5 * ($bruto - 1)));
+        };
+
+        // 5. carteira já existente por mês (duplicatas + cheques) dentro do período
+        $carteira = [];
+        $dup = $this->selecionar("SELECT EXTRACT(YEAR FROM FC.CON_DT_VENCIMENTO) AS ANO, EXTRACT(MONTH FROM FC.CON_DT_VENCIMENTO) AS MES, SUM(FC.CON_VALOR_CORRIGIDO) AS VALOR FROM FIN_CONTAS FC WHERE FC.CON_TIPO = 1 AND FC.CON_PREVISAO IN (0, 1) AND FC.CON_SITUACAO IN (0, 1) AND COALESCE(FC.CON_VALOR_CORRIGIDO, 0) > 0 AND CAST(FC.CON_DT_VENCIMENTO AS DATE) BETWEEN ? AND ? GROUP BY 1, 2", [$inicio->format('Y-m-d'), $fim->format('Y-m-d')]);
+        $chq = [];
         foreach (array_merge($dup, $chq) as $l) {
             $k = sprintf('%04d-%02d', $l->ANO, $l->MES);
             $carteira[$k] = ($carteira[$k] ?? 0) + (float) $l->VALOR;

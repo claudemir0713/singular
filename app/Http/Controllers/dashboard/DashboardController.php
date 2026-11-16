@@ -45,7 +45,7 @@ class DashboardController extends Controller
     {
         $card = (string) $request->input('card');
         $usuario = Auth::user();
-        if ($this->usuarioRestrito($usuario) && in_array($card, ['pagar', 'prev_pagar', 'saldo', 'proj_receber'], true)) {
+        if ($this->usuarioRestrito($usuario) && in_array($card, ['pagar', 'prev_pagar', 'saldo', 'proj_receber', 'proj_pagar'], true)) {
             return response()->json(['success' => false, 'message' => 'Sem permissão para este card.'], 403);
         }
         try {
