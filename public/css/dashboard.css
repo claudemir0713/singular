@@ -244,3 +244,20 @@
 html.audit-aberto,html.audit-aberto body{overflow:hidden !important}
 #dashboardAuditModal{overscroll-behavior:contain}
 .audit-tabela{overscroll-behavior:contain}
+/* Entradas projetadas */
+.card-proj-receber{--accent:#7a8fe0}
+.dashboard-cenario{background:#fff;border:1px solid #dfe5e8;border-radius:4px;color:#455a66;font-size:11px;margin-top:6px;padding:2px 4px;width:100%}
+.dashboard-cenario:focus{border-color:#7a8fe0;outline:0}
+/* Entradas projetadas: acabamento visual */
+.card-proj-receber{background:linear-gradient(180deg,#f4f6fe 0%,#fff 62%);border-color:#d9defa}
+.card-proj-receber:before{background:repeating-linear-gradient(180deg,#7a8fe0 0 7px,#b9c4f3 7px 11px);width:4px}
+.card-proj-receber .dashboard-card-top>span:first-child:after{background:#e6eafc;border-radius:9px;color:#5468c9;content:'ESTIMATIVA';font-size:8.5px;font-weight:700;letter-spacing:.5px;margin-left:6px;padding:1px 6px;vertical-align:1px}
+.card-proj-receber .dashboard-card-value{color:#3d4f9f}
+.dashboard-spark{align-items:flex-end;display:flex;gap:2px;height:26px;margin:8px 0 2px}
+.dashboard-spark i{background:linear-gradient(180deg,#8da0ea,#b9c4f3);border-radius:2px 2px 0 0;display:block;flex:1;min-height:3px;transition:height .25s}
+.dashboard-spark i:hover{background:#5468c9}
+.dashboard-seg{background:#e9edfb;border-radius:6px;display:flex;margin-top:8px;padding:2px}
+.dashboard-seg button{background:transparent;border:0;border-radius:4px;color:#5b6a9c;cursor:pointer;flex:1;font-size:10.5px;font-weight:600;padding:3px 0;transition:background .15s,color .15s}
+.dashboard-seg button:hover{color:#3d4f9f}
+.dashboard-seg button.ativo{background:#fff;box-shadow:0 1px 2px rgba(61,79,159,.25);color:#3d4f9f}
+.card-proj-receber .dashboard-prev-toggle{margin-top:8px}

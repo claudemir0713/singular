@@ -116,7 +116,7 @@
         $('#dashboardAuditModal').modal('show');
 
         var filtros = $('#dashboard-filter-form').serialize();
-        $.getJSON(url + '?' + filtros + '&card=' + encodeURIComponent(card)).done(function (r) {
+        $.getJSON(url + '?' + filtros + '&card=' + encodeURIComponent(card) + '&cenario=' + encodeURIComponent($('#cenario-proj').val() || 'base') + '&pedidos=' + ($('.dashboard-prev-check[data-prev="pedidos_pendentes"]').is(':checked') ? '1' : '0')).done(function (r) {
             if (!r || !r.success) {
                 $('#audit-erro').removeClass('d-none').text((r && r.message) || 'Não foi possível carregar a auditoria.');
                 return;
@@ -178,8 +178,25 @@
     $(document).on('click', '#audit-exportar', exportarCsv);
 })(jQuery);
 
-/* Trava a rolagem da página enquanto a auditoria está aberta */
+/* Trava a rolagem da página enquanto a auditoria está aberta.
+   O tema aplica o plugin niceScroll no <html> (scripts.js), que rola a página sozinho ao
+   detectar a roda do mouse; por isso ele é desligado durante a auditoria e religado ao fechar. */
 jQuery(function ($) {
-    $(document).on('show.bs.modal', '#dashboardAuditModal', function () { $('html').addClass('audit-aberto'); });
-    $(document).on('hidden.bs.modal', '#dashboardAuditModal', function () { $('html').removeClass('audit-aberto'); });
+    var opcoesNice = { styler: 'fb', cursorcolor: '#007AFF', cursorwidth: '6', cursorborderradius: '10px', background: '#F7F7F7', cursorborder: '', zindex: '1000' };
+    var religar = false;
+
+    $(document).on('show.bs.modal', '#dashboardAuditModal', function () {
+        $('html').addClass('audit-aberto');
+        if ($.fn.getNiceScroll && $('html').getNiceScroll().length) {
+            $('html').getNiceScroll().remove();
+            religar = true;
+        }
+    });
+    $(document).on('hidden.bs.modal', '#dashboardAuditModal', function () {
+        $('html').removeClass('audit-aberto');
+        if (religar && $.fn.niceScroll) {
+            $('html').niceScroll(opcoesNice);
+            religar = false;
+        }
+    });
 });

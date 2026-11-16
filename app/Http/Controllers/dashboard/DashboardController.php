@@ -45,11 +45,11 @@ class DashboardController extends Controller
     {
         $card = (string) $request->input('card');
         $usuario = Auth::user();
-        if ($this->usuarioRestrito($usuario) && in_array($card, ['pagar', 'prev_pagar', 'saldo'], true)) {
+        if ($this->usuarioRestrito($usuario) && in_array($card, ['pagar', 'prev_pagar', 'saldo', 'proj_receber'], true)) {
             return response()->json(['success' => false, 'message' => 'Sem permissão para este card.'], 403);
         }
         try {
-            return response()->json(['success' => true, 'detalhe' => $this->dashboardService->obterDetalheCard($card, $this->montarFiltros($request, $usuario))]);
+            return response()->json(['success' => true, 'detalhe' => $this->dashboardService->obterDetalheCard($card, array_merge($this->montarFiltros($request, $usuario), ['cenario' => (string) $request->input('cenario', 'base'), 'pedidos' => (string) $request->input('pedidos', '0')]))]);
         } catch (\InvalidArgumentException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         } catch (\Throwable $e) {
